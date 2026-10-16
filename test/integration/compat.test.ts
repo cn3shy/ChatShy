@@ -87,6 +87,28 @@ describe('客户端兼容层（集成）', () => {
     expect(body.input_tokens).toBeGreaterThanOrEqual(8); // 你是助手 + 你好世界 = 8 个 CJK 字
   });
 
+  it('/v1/messages 容忍 messages 数组里的 system 段（Claude Code 真实发法）', async () => {
+    const s = await boot();
+    const resP = fetch(`${s.base}/v1/messages?beta=true`, {
+      method: 'POST',
+      headers: anthropicHeaders(s.key),
+      body: JSON.stringify({
+        model: 'm',
+        max_tokens: 100,
+        messages: [
+          { role: 'system', content: '夹带在数组里的系统提示' },
+          { role: 'user', content: '你好' },
+        ],
+      }),
+    });
+    await waitFor(() => s.queue.listPending().length === 1);
+    s.queue.reply(s.queue.listPending()[0]!.id, '收到');
+    const res = await resP;
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { content: Array<{ text: string }> };
+    expect(body.content[0]!.text).toBe('收到');
+  });
+
   it('Claude Code 遥测路径一律 200（404 会触发客户端重试风暴）', async () => {
     const s = await boot();
     const res = await fetch(`${s.base}/api/event_logging/batch`, {

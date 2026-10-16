@@ -42,9 +42,16 @@ export function parseAnthropicRequest(body: unknown): ParseResult<AnthropicParse
   }
 
   const messages: ChatMsg[] = [];
+  const inlineSystemParts: string[] = [];
   for (const raw of b.messages) {
     if (raw === null || typeof raw !== 'object') return { ok: false, message: 'Invalid message entry' };
     const m = raw as { role?: unknown; content?: unknown };
+    // 宽容处理：部分客户端（如 Claude Code）会把 system 塞进 messages 数组，
+    // 官方 API 应放顶层 system；这里折叠进 system 而不是拒绝
+    if (m.role === 'system') {
+      inlineSystemParts.push(blocksToString(m.content));
+      continue;
+    }
     if (m.role !== 'user' && m.role !== 'assistant') {
       return { ok: false, message: `Unsupported message role: ${m.role === undefined ? '(missing)' : String(m.role)}` };
     }
@@ -57,6 +64,10 @@ export function parseAnthropicRequest(body: unknown): ParseResult<AnthropicParse
   } else if (Array.isArray(b.system)) {
     const s = blocksToString(b.system);
     if (s !== '') system = s;
+  }
+  if (inlineSystemParts.length > 0) {
+    const extra = inlineSystemParts.filter((s) => s !== '').join('\n\n');
+    if (extra !== '') system = system === undefined ? extra : `${system}\n\n${extra}`;
   }
 
   return {

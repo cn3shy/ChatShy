@@ -51,11 +51,34 @@ describe('parseAnthropicRequest', () => {
     expect(r.value.stream).toBe(true);
   });
 
+  it('messages 数组里的 system 段折叠合并进顶层 system（Claude Code 会这样发）', () => {
+    const r = parseAnthropicRequest({
+      system: '顶层提示',
+      messages: [
+        { role: 'system', content: '夹带提示一' },
+        { role: 'user', content: '你好' },
+        { role: 'system', content: [{ type: 'text', text: '夹带提示二' }] },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.prompt.system).toBe('顶层提示\n\n夹带提示一\n\n夹带提示二');
+    expect(r.value.prompt.messages).toEqual([{ role: 'user', content: '你好' }]);
+
+    // 只有夹带、没有顶层 system 时也能成立
+    const r2 = parseAnthropicRequest({
+      messages: [{ role: 'system', content: '只有夹带' }, { role: 'user', content: 'hi' }],
+    });
+    expect(r2.ok).toBe(true);
+    if (!r2.ok) return;
+    expect(r2.value.prompt.system).toBe('只有夹带');
+  });
+
   it('非法请求返回 ok:false', () => {
     expect(parseAnthropicRequest(null).ok).toBe(false);
     expect(parseAnthropicRequest({}).ok).toBe(false);
     expect(parseAnthropicRequest({ messages: [] }).ok).toBe(false);
-    expect(parseAnthropicRequest({ messages: [{ role: 'system', content: 'x' }] }).ok).toBe(false);
+    expect(parseAnthropicRequest({ messages: [{ role: 'hacker', content: 'x' }] }).ok).toBe(false);
   });
 });
 
