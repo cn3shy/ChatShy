@@ -1,5 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
+import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { OperatorHub } from '../core/hub.js';
 import type { JobQueue } from '../core/jobs.js';
@@ -55,6 +58,20 @@ export async function buildServer(ctx: ServerContext, opts: { logger?: boolean }
   registerOpenAIRoutes(app, ctx);
   registerAnthropicRoutes(app, ctx);
   registerAdminRoutes(app, ctx);
+
+  // 操作台前端静态资源：存在构建产物时才托管（开发/测试环境可跳过）
+  const webDist = path.resolve(process.cwd(), 'web', 'dist');
+  if (fs.existsSync(path.join(webDist, 'index.html'))) {
+    await app.register(fastifyStatic, { root: webDist });
+    app.setNotFoundHandler((req, reply) => {
+      const url = req.raw.url ?? '';
+      const isApi = url.startsWith('/v1/') || url.startsWith('/admin/') || url === '/healthz';
+      if (!isApi && req.method === 'GET' && (req.headers.accept ?? '').includes('text/html')) {
+        return reply.sendFile('index.html'); // SPA 回退
+      }
+      return reply.code(404).send({ error: 'not_found' });
+    });
+  }
 
   ctx.hub.startPing(ctx.hubPingMs ?? 20_000);
   app.addHook('onClose', async () => {
