@@ -1,0 +1,45 @@
+web/src/style.css
+  s_030b9a1f38bdbf::t_a647784dde920b 685-780
+test/integration/compat.test.ts
+  s_030b9a1f38bdbf::t_886061b21cd936 1-24,27-33,36-41,43-48,50-53,55-60,62-99
+  s_030b9a1f38bdbf::t_b353a1a00c0116 25-26,34-35,42,49,54,61
+src/server/auth.ts
+  s_030b9a1f38bdbf::t_9efe7e2192b0f5 6,10,13,16-28
+src/server/routes/anthropic.ts
+  s_030b9a1f38bdbf::t_ebf81cfa3899ea 1,19-23,25,107-120
+  s_030b9a1f38bdbf::t_230b4eba519b15 121-126
+web/src/components/Login.vue
+  s_030b9a1f38bdbf::t_789bbef2c950e4 25
+web/src/CallerChat.vue
+  s_030b9a1f38bdbf::t_fb44d6c6d1f739 1-305
+README.md
+  s_030b9a1f38bdbf::t_c919298e83d103 46-49
+  s_030b9a1f38bdbf::t_4570e06da72574 68-69,72-74
+  s_030b9a1f38bdbf::t_292dab5dbf4556 139
+  s_030b9a1f38bdbf::t_e2811c292db51c 12
+  s_030b9a1f38bdbf::t_5efe2969654db2 75
+web/src/main.ts
+  s_030b9a1f38bdbf::t_0cc509f31048e5 4,8-15
+src/server/routes/openai.ts
+  s_030b9a1f38bdbf::t_da64bb0c5e1430 112-114
+  s_030b9a1f38bdbf::t_e0aa3ee3528956 1,22-23,110-111
+src/server/app.ts
+  s_030b9a1f38bdbf::t_600ba967135723 59,61-62
+  s_030b9a1f38bdbf::t_ddca9b91ff1f0c 58,60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "97f34a01affc4137efae955ded24716b0140d182",
+  "prompts": {},
+  "sessions": {
+    "s_030b9a1f38bdbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd57095d-9ade-484e-8daa-16f73cdcb188",
+        "model": "deepseek-flash"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
