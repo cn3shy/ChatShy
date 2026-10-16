@@ -1,0 +1,29 @@
+test/unit/protocol-openai.test.ts
+  s_030b9a1f38bdbf::t_95321f53a6f32c 1-214
+test/unit/protocol-types.test.ts
+  s_030b9a1f38bdbf::t_151214850a3b46 1-19
+src/protocol/anthropic.ts
+  s_030b9a1f38bdbf::t_a6ed28fd89453d 1-159
+src/protocol/types.ts
+  s_030b9a1f38bdbf::t_c1989cfbdc8cd6 19-20
+test/unit/protocol-anthropic.test.ts
+  s_030b9a1f38bdbf::t_a30fc9b5760933 1-162
+src/protocol/openai.ts
+  s_030b9a1f38bdbf::t_f01fffd4da180e 1-183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cd153b7449a108315c402a0caa71c7c1884589fb",
+  "prompts": {},
+  "sessions": {
+    "s_030b9a1f38bdbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd57095d-9ade-484e-8daa-16f73cdcb188",
+        "model": "deepseek-flash"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
