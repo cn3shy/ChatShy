@@ -16,6 +16,8 @@ export interface Reply {
   content: string;
 }
 
+export type ParseResult<T> = { ok: true; value: T } | { ok: false; message: string };
+
 const CJK_RE = /[　-〿぀-ヿ㐀-䶿一-鿿豈-﫿＀-￯]/g;
 
 /** 粗略估算 token 数：CJK 1 字 ≈ 1 token，其余 4 字符 ≈ 1 token */
