@@ -1,0 +1,29 @@
+src/protocol/anthropic.ts
+  s_030b9a1f38bdbf::t_dd9aac13acfda3 129-134
+  s_030b9a1f38bdbf::t_ad2ecd881ca0b6 107-113
+README.md
+  s_030b9a1f38bdbf::t_fb43b0dbcc489f 74-76
+src/server/app.ts
+  s_030b9a1f38bdbf::t_50bf8e43e8c7af 63-67
+test/unit/protocol-anthropic.test.ts
+  s_030b9a1f38bdbf::t_590fb6702040cd 123-128
+  s_030b9a1f38bdbf::t_4bf98512e265e3 79-84
+test/integration/compat.test.ts
+  s_030b9a1f38bdbf::t_d2a877f5968573 90-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b63c24378ac7a9f7dabeea35976b987f331b5ea3",
+  "prompts": {},
+  "sessions": {
+    "s_030b9a1f38bdbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd57095d-9ade-484e-8daa-16f73cdcb188",
+        "model": "deepseek-flash"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
