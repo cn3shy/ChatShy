@@ -1,0 +1,19 @@
+docs/superpowers/plans/2026-10-16-chatshy-implementation.md
+  s_030b9a1f38bdbf::t_88b6b9a413f1e1 1-163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dcfc6e4764d81f5104456a5d4b469d8352518637",
+  "prompts": {},
+  "sessions": {
+    "s_030b9a1f38bdbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd57095d-9ade-484e-8daa-16f73cdcb188",
+        "model": "deepseek-flash"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
