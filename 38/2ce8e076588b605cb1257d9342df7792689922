@@ -1,0 +1,26 @@
+docs/superpowers/specs/2026-10-16-chatshy-design.md
+  s_030b9a1f38bdbf::t_d94da8d5d9a897 136
+  s_030b9a1f38bdbf::t_253379f5c90261 177
+  s_030b9a1f38bdbf::t_bf0e1d30065686 133-135
+  s_030b9a1f38bdbf::t_47f10b928385c9 137-139,174-176
+  s_030b9a1f38bdbf::t_5dd0dd2608c8a9 178-180
+  s_030b9a1f38bdbf::t_3e791c4c10dcc6 1-132,140-173,181-350
+.gitignore
+  s_030b9a1f38bdbf::t_5b61e40a8aab08 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "382ce8e076588b605cb1257d9342df7792689922",
+  "prompts": {},
+  "sessions": {
+    "s_030b9a1f38bdbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd57095d-9ade-484e-8daa-16f73cdcb188",
+        "model": "deepseek-flash"
+      },
+      "human_author": "sunshuai <sunshuai@pansoft.com>"
+    }
+  }
+}
