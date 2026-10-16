@@ -1,15 +1,16 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { deleteKey, generateKey, getKey, listKeys, updateKey, type KeyRecord } from '../../core/keys.js';
 import {
   SETTING_DEFAULT_TIMEOUT_MS,
   SETTING_MODEL_NAME,
+  getCallerKey,
   getDefaultTimeoutMs,
   getModelName,
+  regenerateCallerKey,
   setAdminPassword,
   setSetting,
   verifyAdminPassword,
 } from '../../core/settings.js';
-import { appendMessage, createConsoleThread, getThread, listThreadMessages } from '../../core/threads.js';
+import { appendMessage, getThread, listThreadMessages } from '../../core/threads.js';
 import type { ServerContext } from '../app.js';
 import { SESSION_COOKIE } from '../session.js';
 import { SSE_HEADERS } from '../serve.js';
@@ -21,7 +22,10 @@ interface ThreadListRow {
   model: string;
   created_at: number;
   updated_at: number;
-  key_name: string | null;
+  source_ip: string;
+  source_ua: string;
+  source_client: string;
+  source_fingerprint: string;
   last_content: string | null;
   pending_count: number;
   pending_job_id: string | null;
@@ -43,10 +47,6 @@ function numberOrNull(v: unknown): number | null | undefined {
   return undefined;
 }
 
-function positiveIntOrUndefined(v: unknown): number | undefined {
-  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : undefined;
-}
-
 export function registerAdminRoutes(app: FastifyInstance, ctx: ServerContext): void {
   const requireAuth = async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
     const token = req.cookies[SESSION_COOKIE];
@@ -54,18 +54,6 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: ServerContext): v
       reply.code(401).send({ error: 'unauthorized' });
     }
   };
-
-  const publicKey = (k: KeyRecord): object => ({
-    id: k.id,
-    name: k.name,
-    keyPrefix: k.keyPrefix,
-    enabled: k.enabled,
-    timeoutMs: k.timeoutMs,
-    dailyLimit: k.dailyLimit,
-    maxPending: k.maxPending,
-    createdAt: k.createdAt,
-    lastUsedAt: k.lastUsedAt,
-  });
 
   // ---- 登录 ----
 
@@ -118,13 +106,12 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: ServerContext): v
     const rows = ctx.db
       .prepare(
         `SELECT t.id, t.title, t.protocol, t.model, t.created_at, t.updated_at,
-                k.name AS key_name,
+                t.source_ip, t.source_ua, t.source_client, t.source_fingerprint,
                 (SELECT content FROM messages m WHERE m.thread_id = t.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS last_content,
                 (SELECT COUNT(*) FROM jobs j WHERE j.thread_id = t.id AND j.status = 'pending') AS pending_count,
                 (SELECT j.id FROM jobs j WHERE j.thread_id = t.id AND j.status = 'pending' ORDER BY j.created_at DESC LIMIT 1) AS pending_job_id,
                 (SELECT j.deadline_at FROM jobs j WHERE j.thread_id = t.id AND j.status = 'pending' ORDER BY j.created_at DESC LIMIT 1) AS pending_deadline
          FROM threads t
-         LEFT JOIN keys k ON k.id = t.key_id
          ORDER BY (pending_count > 0) DESC, pending_deadline ASC, t.updated_at DESC
          LIMIT 200`,
       )
@@ -135,7 +122,9 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: ServerContext): v
         title: r.title,
         protocol: r.protocol,
         model: r.model,
-        keyName: r.key_name,
+        sourceClient: r.source_client,
+        sourceIp: r.source_ip,
+        sourceUa: r.source_ua,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
         lastMessage: r.last_content ?? '',
@@ -173,38 +162,20 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: ServerContext): v
       )
       .all(id) as JobRow[];
 
-    const key = thread.keyId === null ? null : getKey(ctx.db, thread.keyId);
     return {
       thread: {
         id: thread.id,
         title: thread.title,
         protocol: thread.protocol,
         model: thread.model,
-        keyName: key?.name ?? null,
+        sourceClient: thread.sourceClient,
+        sourceIp: thread.sourceIp,
+        sourceUa: thread.sourceUa,
         createdAt: thread.createdAt,
         updatedAt: thread.updatedAt,
       },
       messages,
       pendingJobs: pendingRows.map((j) => ({ id: j.id, protocol: j.protocol, mode: j.mode, deadlineAt: j.deadline_at })),
-    };
-  });
-
-  app.post('/admin/api/threads', { preHandler: requireAuth }, async (req) => {
-    const body = (req.body ?? {}) as { title?: unknown };
-    const title = typeof body.title === 'string' && body.title.trim() !== '' ? body.title.trim() : '控制台测试会话';
-    return { thread: createConsoleThread(ctx.db, title) };
-  });
-
-  app.post('/admin/api/threads/:id/messages', { preHandler: requireAuth }, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    if (getThread(ctx.db, id) === null) return reply.code(404).send({ error: 'not_found' });
-    const body = (req.body ?? {}) as { role?: unknown; content?: unknown };
-    if (body.role !== 'user' && body.role !== 'assistant') return reply.code(400).send({ error: 'invalid_role' });
-    if (typeof body.content !== 'string' || body.content.trim() === '') {
-      return reply.code(400).send({ error: 'empty_content' });
-    }
-    return {
-      message: appendMessage(ctx.db, { threadId: id, role: body.role, content: body.content, source: 'console' }),
     };
   });
 
@@ -240,54 +211,17 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: ServerContext): v
     return { ok: true };
   });
 
-  // ---- Key 管理 ----
-
-  app.get('/admin/api/keys', { preHandler: requireAuth }, async () => ({
-    keys: listKeys(ctx.db).map(publicKey),
-  }));
-
-  app.post('/admin/api/keys', { preHandler: requireAuth }, async (req) => {
-    const body = (req.body ?? {}) as { name?: unknown; timeoutMs?: unknown; dailyLimit?: unknown; maxPending?: unknown };
-    const name = typeof body.name === 'string' && body.name.trim() !== '' ? body.name.trim() : '未命名';
-    const { record, plaintext } = generateKey(ctx.db, name, {
-      timeoutMs: numberOrNull(body.timeoutMs) ?? null,
-      dailyLimit: numberOrNull(body.dailyLimit) ?? null,
-      maxPending: numberOrNull(body.maxPending) ?? 5,
-    });
-    return { key: publicKey(record), plaintext };
-  });
-
-  app.patch('/admin/api/keys/:id', { preHandler: requireAuth }, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const body = (req.body ?? {}) as {
-      name?: unknown;
-      enabled?: unknown;
-      timeoutMs?: unknown;
-      dailyLimit?: unknown;
-      maxPending?: unknown;
-    };
-    const updated = updateKey(ctx.db, id, {
-      name: typeof body.name === 'string' && body.name.trim() !== '' ? body.name.trim() : undefined,
-      enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
-      timeoutMs: body.timeoutMs === undefined ? undefined : numberOrNull(body.timeoutMs),
-      dailyLimit: body.dailyLimit === undefined ? undefined : numberOrNull(body.dailyLimit),
-      maxPending: body.maxPending === undefined ? undefined : positiveIntOrUndefined(body.maxPending),
-    });
-    if (updated === null) return reply.code(404).send({ error: 'not_found' });
-    return { key: publicKey(updated) };
-  });
-
-  app.delete('/admin/api/keys/:id', { preHandler: requireAuth }, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    if (!deleteKey(ctx.db, id)) return reply.code(404).send({ error: 'not_found' });
-    return { ok: true };
-  });
-
   // ---- 全局设置 ----
 
   app.get('/admin/api/settings', { preHandler: requireAuth }, async () => ({
     defaultTimeoutMs: getDefaultTimeoutMs(ctx.db),
     modelName: getModelName(ctx.db),
+    callerKey: getCallerKey(ctx.db) ?? '',
+  }));
+
+  /** 重新生成全局调用方 Key；旧 Key 立即失效，所有调用方都要改配置 */
+  app.post('/admin/api/caller-key', { preHandler: requireAuth }, async () => ({
+    callerKey: regenerateCallerKey(ctx.db),
   }));
 
   app.patch('/admin/api/settings', { preHandler: requireAuth }, async (req, reply) => {

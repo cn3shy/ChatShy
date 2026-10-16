@@ -262,6 +262,22 @@ code {
   font-size: 0.75rem;
 }
 
+/* 来源标签：客户端名用强调色，IP 用等宽字 */
+.tag.source {
+  color: var(--accent-2);
+  border-color: rgba(79, 140, 255, 0.35);
+  background: rgba(79, 140, 255, 0.1);
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag.ip {
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 0.72rem;
+}
+
 .thread-item .time {
   color: var(--muted);
   font-size: 0.75rem;
@@ -370,6 +386,16 @@ code {
 
 .msg.assistant .msg-meta {
   justify-content: flex-end;
+}
+
+.msg-sender {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.msg-time {
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .undelivered {
@@ -615,28 +641,6 @@ code {
   color: var(--muted);
 }
 
-.key-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.86rem;
-}
-
-.key-table th,
-.key-table td {
-  text-align: left;
-  padding: 8px 6px;
-  border-bottom: 1px solid var(--border);
-}
-
-.key-table th {
-  color: var(--muted);
-  font-weight: 500;
-}
-
-.key-table tr.disabled td {
-  opacity: 0.5;
-}
-
 .ghost-btn {
   background: transparent;
   border: 1px solid var(--border);
@@ -660,112 +664,7 @@ code {
   border-color: var(--danger);
 }
 
-.plaintext-box {
-  background: rgba(62, 207, 142, 0.08);
-  border: 1px solid rgba(62, 207, 142, 0.4);
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin-bottom: 12px;
-}
-
-.plaintext-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.plaintext-row code {
-  background: var(--panel-2);
-  padding: 6px 10px;
-  border-radius: 6px;
-  overflow-wrap: anywhere;
-}
-
-/* ---- 调用方页面 (/chat) ---- */
-
-.caller-page {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.caller-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 18px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
-}
-
-.caller-bar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 10px 18px;
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-
-.caller-bar input,
-.caller-bar select {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 7px 10px;
-  outline: none;
-}
-
-.caller-bar input:focus,
-.caller-bar select:focus {
-  border-color: var(--accent);
-}
-
-.caller-bar .key-input {
-  flex: 1;
-  min-width: 220px;
-}
-
-.caller-bar .model-input {
-  width: 150px;
-}
-
-.stream-toggle {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  color: var(--muted);
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-
-.caller-error {
-  color: var(--danger);
-  text-align: center;
-  font-size: 0.88rem;
-  margin: 4px 0;
-}
-
-.caller-hint {
-  color: var(--muted);
-  font-size: 0.82rem;
-  margin: 6px 0 0;
-  text-align: right;
-}
-
-.waiting {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-}
-
-.send-btn.stop {
-  background: var(--danger);
-}
-
+/* 登录页底部的「调用方页面」入口链接 */
 .chat-link {
   color: var(--muted);
   font-size: 0.82rem;
@@ -776,6 +675,25 @@ code {
 
 .chat-link:hover {
   color: var(--accent-2);
+}
+
+/* 全局调用方 Key 的展示行（设置页） */
+.key-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.key-value {
+  flex: 1;
+  min-width: 220px;
+  background: rgba(62, 207, 142, 0.08);
+  border: 1px solid rgba(62, 207, 142, 0.4);
+  padding: 8px 10px;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 
 /* ---- 响应式（手机） ---- */

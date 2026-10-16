@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import './caller.css';
 import { renderMarkdown } from './markdown';
 
 interface ChatTurn {
@@ -31,8 +32,16 @@ const messages = reactive<ChatTurn[]>(loadHistory());
 const input = ref('');
 const sending = ref(false);
 const error = ref('');
+const showSettings = ref(false);
 const listEl = ref<HTMLElement | null>(null);
+const taEl = ref<HTMLTextAreaElement | null>(null);
 let abortCtrl: AbortController | null = null;
+
+const TIPS = ['你好，介绍一下你自己', '用 Python 写一个快速排序', '帮我把这段话润色得更正式一些'];
+
+const hasKey = computed(() => apiKey.value.trim() !== '');
+const canSend = computed(() => !sending.value && input.value.trim() !== '' && hasKey.value);
+const isEmpty = computed(() => messages.length === 0);
 
 function loadHistory(): ChatTurn[] {
   try {
@@ -69,21 +78,12 @@ watch(
   },
 );
 
-const canSend = computed(() => !sending.value && input.value.trim() !== '' && apiKey.value.trim() !== '');
-
-function onKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    void send();
-  }
-}
-
 function friendlyError(err: unknown): string {
   if (err !== null && typeof err === 'object' && 'status' in err) {
     const fail = err as ApiFail;
     const base: Record<number, string> = {
-      401: 'API Key 无效或已禁用，请检查顶部填写',
-      429: '触发限额（日限额或并发上限），可稍后再试',
+      401: 'API Key 无效，请点右上角 ⚙ 检查',
+      429: '请求太频繁，稍后再试',
       504: '超时：操作员没有及时回复这次请求',
       529: '超时：操作员没有及时回复这次请求',
     };
@@ -202,6 +202,7 @@ async function send(): Promise<void> {
   if (!canSend.value) return;
   const text = input.value;
   input.value = '';
+  autoGrow();
   error.value = '';
   messages.push({ role: 'user', content: text });
   const payload = messages.filter((m) => m.content !== '');
@@ -241,65 +242,124 @@ function clearHistory(): void {
   error.value = '';
   persist();
 }
+
+function onKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    void send();
+  }
+}
+
+/** 输入框随内容长高（上限由 CSS 的 max-height 兜住） */
+function autoGrow(): void {
+  const el = taEl.value;
+  if (el === null) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
+
+function useTip(text: string): void {
+  input.value = text;
+  void nextTick(() => taEl.value?.focus());
+}
+
+onMounted(() => {
+  document.title = 'ChatShy · 对话';
+  // 还没配 Key 就直接把设置摊开，省得用户对着输入框发不出去
+  if (!hasKey.value) showSettings.value = true;
+});
 </script>
 
 <template>
-  <div class="caller-page">
-    <header class="caller-head">
-      <div class="logo"><span class="logo-dot"></span>ChatShy · 调用方</div>
-      <a class="ghost-btn" href="/">操作台入口 →</a>
+  <div class="db-page">
+    <header class="db-top">
+      <div class="db-brand"><span class="db-brand-dot"></span>ChatShy</div>
+      <button class="db-icon-btn" title="设置" @click="showSettings = true">⚙</button>
     </header>
 
-    <div class="caller-bar">
-      <input
-        v-model="apiKey"
-        type="password"
-        class="key-input"
-        placeholder="API Key（sk-chatshy-…）"
-        autocomplete="off"
-      />
-      <select v-model="protocol">
-        <option value="openai">OpenAI 格式</option>
-        <option value="anthropic">Anthropic 格式</option>
-      </select>
-      <input v-model="model" class="model-input" placeholder="模型名" />
-      <label class="stream-toggle"><input v-model="stream" type="checkbox" /> 流式</label>
-      <button class="ghost-btn" @click="clearHistory">清空对话</button>
-    </div>
-
-    <div ref="listEl" class="messages">
-      <div v-if="messages.length === 0" class="empty-hint">
-        填写上方 API Key 开始聊天。<br />
-        消息会发到操作台由真人回复（人工回复需要一点时间，界面会提示等待状态）。<br />
-        Key 请找 ChatShy 管理员生成，形如 <code>sk-chatshy-…</code>。
-      </div>
-      <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">
-        <div class="msg-meta">
-          <span>{{ m.role === 'user' ? '我（调用方）' : '操作员' }}</span>
+    <main ref="listEl" class="db-main">
+      <div class="db-col">
+        <div v-if="isEmpty" class="db-welcome">
+          <h1>你好，我是 ChatShy</h1>
+          <p>你的消息会发给真人操作员，回复需要等一会儿</p>
+          <div class="db-tips">
+            <button v-for="t in TIPS" :key="t" class="db-tip" @click="useTip(t)">{{ t }}</button>
+          </div>
         </div>
-        <div class="msg-body">
-          <template v-if="m.content !== ''"><div v-html="renderMarkdown(m.content)"></div></template>
-          <template v-else-if="sending && i === messages.length - 1">
-            <span class="waiting"><span class="pulse"></span>请求已发出，等待操作员回复…</span>
-          </template>
-        </div>
-      </div>
-      <p v-if="error !== ''" class="caller-error">{{ error }}</p>
-    </div>
 
-    <div class="composer-wrap">
-      <div class="composer">
+        <div v-for="(m, i) in messages" :key="i" class="db-msg" :class="m.role">
+          <div v-if="m.role === 'assistant'" class="db-avatar">C</div>
+          <div class="db-bubble">
+            <template v-if="m.content !== ''">
+              <div class="db-md" v-html="renderMarkdown(m.content)"></div>
+            </template>
+            <template v-else-if="sending && i === messages.length - 1">
+              <span class="db-thinking"><i></i><i></i><i></i></span>
+            </template>
+          </div>
+        </div>
+
+        <p v-if="error !== ''" class="db-error">{{ error }}</p>
+      </div>
+    </main>
+
+    <div class="db-composer-wrap">
+      <div class="db-composer">
         <textarea
+          ref="taEl"
           v-model="input"
+          class="db-ta"
+          rows="1"
           :disabled="sending"
-          placeholder="输入消息（Enter 发送，Shift+Enter 换行）"
-          rows="3"
+          placeholder="给 ChatShy 发消息"
           @keydown="onKeydown"
+          @input="autoGrow"
         ></textarea>
-        <button v-if="!sending" class="send-btn" :disabled="!canSend" @click="send">发送</button>
-        <button v-else class="send-btn stop" @click="stop">停止</button>
+        <div class="db-tools">
+          <button class="db-pill" @click="showSettings = true">
+            {{ protocol === 'openai' ? 'OpenAI 格式' : 'Anthropic 格式' }} · {{ model || 'chatshy'
+            }}<template v-if="stream"> · 流式</template>
+          </button>
+          <button v-if="!sending" class="db-send" :disabled="!canSend" title="发送" @click="send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+          </button>
+          <button v-else class="db-send stop" title="停止" @click="stop">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <rect x="7" y="7" width="10" height="10" rx="1.5" />
+            </svg>
+          </button>
+        </div>
+        <p v-if="!hasKey" class="db-hint">先点右上角 ⚙ 填上 API Key 才能发送</p>
       </div>
-      <p v-if="apiKey.trim() === ''" class="caller-hint">先填写 API Key 才能发送</p>
+    </div>
+
+    <div v-if="showSettings" class="db-mask" @click.self="showSettings = false">
+      <div class="db-modal">
+        <h3>设置</h3>
+        <label class="db-field">
+          <span>API Key（找管理员要）</span>
+          <input v-model="apiKey" type="password" placeholder="sk-chatshy-…" autocomplete="off" />
+        </label>
+        <label class="db-field">
+          <span>协议</span>
+          <select v-model="protocol">
+            <option value="openai">OpenAI 格式</option>
+            <option value="anthropic">Anthropic 格式</option>
+          </select>
+        </label>
+        <label class="db-field">
+          <span>模型名</span>
+          <input v-model="model" placeholder="chatshy" />
+        </label>
+        <label class="db-check"><input v-model="stream" type="checkbox" /> 流式接收</label>
+        <div class="db-modal-actions">
+          <button class="db-btn ghost" @click="clearHistory">清空本页对话</button>
+          <button class="db-btn primary" @click="showSettings = false">完成</button>
+        </div>
+        <p class="db-note">API Key 与对话记录只存在你这台设备的浏览器里。</p>
+      </div>
     </div>
   </div>
 </template>

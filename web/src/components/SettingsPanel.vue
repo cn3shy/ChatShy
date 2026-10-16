@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { desktopEnabled, requestDesktopPermission, setDesktop, setSound, soundEnabled } from '../notify';
-import { state, updateSettings } from '../store';
+import { regenerateKey, state, updateSettings } from '../store';
 
 defineEmits<{ close: [] }>();
 
@@ -11,6 +11,8 @@ const currentPassword = ref('');
 const newPassword = ref('');
 const basicMsg = ref('');
 const pwdMsg = ref('');
+const keyMsg = ref('');
+const keyCopied = ref(false);
 const busy = ref(false);
 
 const notifyDesktop = ref(desktopEnabled());
@@ -23,6 +25,33 @@ async function toggleDesktop(): Promise<void> {
 
 function toggleSoundPref(): void {
   setSound(notifySound.value);
+}
+
+async function copyKey(): Promise<void> {
+  const key = state.settings?.callerKey ?? '';
+  if (key === '') return;
+  try {
+    await navigator.clipboard.writeText(key);
+  } catch {
+    // 非 HTTPS 上下文里 clipboard API 不可用，提示手动复制
+    keyMsg.value = '复制失败，请手动选中上面的 Key 复制';
+    return;
+  }
+  keyMsg.value = '';
+  keyCopied.value = true;
+  setTimeout(() => (keyCopied.value = false), 1500);
+}
+
+async function resetKey(): Promise<void> {
+  if (!confirm('重新生成后旧 Key 立即失效，所有调用方都要改配置。确定继续？')) return;
+  busy.value = true;
+  try {
+    await regenerateKey();
+    keyMsg.value = '已重新生成 ✓ 记得通知所有调用方更新配置';
+  } catch {
+    keyMsg.value = '重新生成失败';
+  }
+  busy.value = false;
 }
 
 async function saveBasic(): Promise<void> {
@@ -59,8 +88,24 @@ async function savePassword(): Promise<void> {
       </header>
 
       <section class="modal-body">
+        <h3>调用方 Key</h3>
+        <div class="key-row">
+          <code class="key-value">{{ state.settings?.callerKey || '（尚未生成）' }}</code>
+          <button class="ghost-btn small" :disabled="!state.settings?.callerKey" @click="copyKey">
+            {{ keyCopied ? '已复制 ✓' : '复制' }}
+          </button>
+          <button class="ghost-btn small danger" :disabled="busy" @click="resetKey">重新生成</button>
+        </div>
+        <p class="note muted">
+          全项目只有这一个 Key，所有调用方共用。重新生成后旧 Key <b>立即失效</b>。
+        </p>
+        <p v-if="keyMsg" class="note">{{ keyMsg }}</p>
+
         <h3>提醒</h3>
-        <label class="check-row"><input v-model="notifyDesktop" type="checkbox" @change="toggleDesktop" /> 桌面通知（需要 HTTPS 与浏览器授权）</label>
+        <label class="check-row"
+          ><input v-model="notifyDesktop" type="checkbox" @change="toggleDesktop" /> 桌面通知（需要 HTTPS
+          与浏览器授权）</label
+        >
         <label class="check-row"><input v-model="notifySound" type="checkbox" @change="toggleSoundPref" /> 新请求提示音</label>
 
         <h3>服务默认值</h3>

@@ -11,7 +11,6 @@ export const state = reactive({
   selectedId: null as string | null,
   detail: null as ThreadDetail | null,
   settings: null as SettingsInfo | null,
-  showKeys: false,
   showSettings: false,
   /** 每秒推进的时钟，用于倒计时 */
   now: Date.now(),
@@ -118,17 +117,11 @@ export async function ignoreJob(jobId: string): Promise<void> {
   await Promise.all([refreshDetail(), refreshThreads()]);
 }
 
-export async function sendConsoleMessage(role: 'user' | 'assistant', content: string): Promise<void> {
-  const id = state.selectedId;
-  if (id === null) return;
-  await api.postMessage(id, role, content);
-  await Promise.all([refreshDetail(), refreshThreads()]);
-}
-
-export async function newConsoleThread(): Promise<void> {
-  const { thread } = await api.createThread('控制台测试会话');
-  await refreshThreads();
-  await selectThread(thread.id);
+/** 重新生成全局调用方 Key；旧 Key 立即失效，所有调用方都要改配置 */
+export async function regenerateKey(): Promise<string> {
+  const { callerKey } = await api.regenerateCallerKey();
+  if (state.settings !== null) state.settings.callerKey = callerKey;
+  return callerKey;
 }
 
 export async function updateSettings(patch: {
@@ -139,7 +132,7 @@ export async function updateSettings(patch: {
 }): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await api.patchSettings(patch);
-    state.settings = { defaultTimeoutMs: res.defaultTimeoutMs, modelName: res.modelName };
+    state.settings = { ...state.settings, defaultTimeoutMs: res.defaultTimeoutMs, modelName: res.modelName };
     return { ok: true };
   } catch (err) {
     if (err instanceof ApiError) {
@@ -192,7 +185,9 @@ async function handleEvent(data: { type?: string; threadId?: string }): Promise<
     const t = state.threads.find((x) => x.id === data.threadId);
     notifyNewRequest(
       'ChatShy · 新的待回复请求',
-      t !== undefined ? `${t.keyName ?? '控制台'}：${t.lastMessage.slice(0, 60)}` : '有新的待回复请求',
+      t !== undefined
+        ? `${t.sourceClient || '未知来源'}（${t.sourceIp}）：${t.lastMessage.slice(0, 60)}`
+        : '有新的待回复请求',
     );
   }
   if (state.selectedId !== null && data.threadId === state.selectedId) {

@@ -5,6 +5,8 @@ export interface Config {
   port: number;
   dbPath: string;
   adminPassword: string | null;
+  /** 全局调用方 Key 的播种值；库里已有则忽略 */
+  callerKey: string | null;
   defaultTimeoutMs: number;
   modelName: string;
 }
@@ -54,6 +56,7 @@ export const config: Config = {
     ? path.resolve(process.cwd(), strEnv('DB_PATH')!)
     : path.resolve(process.cwd(), 'data', 'chatshy.db'),
   adminPassword: strEnv('ADMIN_PASSWORD'),
+  callerKey: strEnv('CALLER_KEY'),
   defaultTimeoutMs: intEnv('DEFAULT_TIMEOUT_MS', 180_000),
   modelName: strEnv('MODEL_NAME')?.trim() || 'chatshy',
 };

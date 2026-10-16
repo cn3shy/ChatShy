@@ -1,23 +1,37 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { RequestSource } from '../../src/core/source.js';
+import { appendMessage, listThreadMessages, resolveThread } from '../../src/core/threads.js';
 import { openDb, type Db } from '../../src/db/db.js';
 import { migrate } from '../../src/db/migrate.js';
-import { generateKey } from '../../src/core/keys.js';
-import { appendMessage, listThreadMessages, resolveThread } from '../../src/core/threads.js';
 
 let db: Db;
-let keyId: string;
 
 beforeEach(() => {
   db = openDb(':memory:');
   migrate(db);
-  keyId = generateKey(db, 'test').record.id;
 });
+
+/** 测试用的来源对象。fingerprint 就是会话归并的作用域。 */
+const src = (fingerprint: string, over: Partial<RequestSource> = {}): RequestSource => ({
+  ip: '127.0.0.1',
+  ua: 'test/1.0',
+  client: '测试客户端',
+  fingerprint,
+  ...over,
+});
+
+const SOURCE = src('fp-1');
+const OTHER = src('fp-2', { ip: '10.0.0.1', ua: 'other/2.0', client: '另一个客户端' });
 
 const U = (content: string) => ({ role: 'user' as const, content });
 const A = (content: string) => ({ role: 'assistant' as const, content });
 
-function resolve(messages: { role: 'user' | 'assistant'; content: string }[], system?: string) {
-  return resolveThread(db, { keyId, protocol: 'openai', model: 'test-model', system, messages });
+function resolve(
+  messages: { role: 'user' | 'assistant'; content: string }[],
+  system?: string,
+  source: RequestSource = SOURCE,
+) {
+  return resolveThread(db, { source, protocol: 'openai', model: 'test-model', system, messages });
 }
 
 describe('ThreadManager', () => {
@@ -29,6 +43,14 @@ describe('ThreadManager', () => {
     expect(r.appended[0]!.source).toBe('api');
   });
 
+  it('新建会话时记下来源信息', () => {
+    const r = resolve([U('hi')]);
+    expect(r.thread.sourceIp).toBe('127.0.0.1');
+    expect(r.thread.sourceUa).toBe('test/1.0');
+    expect(r.thread.sourceClient).toBe('测试客户端');
+    expect(r.thread.sourceFingerprint).toBe('fp-1');
+  });
+
   it('携带历史的后续请求归并进同一会话，只追加新消息', () => {
     const r1 = resolve([U('u1')]);
     appendMessage(db, { threadId: r1.thread.id, role: 'assistant', content: 'a1', source: 'api' });
@@ -37,6 +59,15 @@ describe('ThreadManager', () => {
     expect(r2.thread.id).toBe(r1.thread.id);
     expect(r2.appended.map((m) => m.content)).toEqual(['u2']);
     expect(listThreadMessages(db, r1.thread.id).map((m) => m.content)).toEqual(['u1', 'a1', 'u2']);
+  });
+
+  it('归并时刷新来源信息（客户端升级换 UA 后展示要跟上）', () => {
+    const r1 = resolve([U('u1')]);
+    const r2 = resolve([U('u1'), A('a1'), U('u2')], undefined, src('fp-1', { ua: 'test/2.0' }));
+    expect(r2.thread.id).toBe(r1.thread.id);
+    expect(r2.thread.sourceUa).toBe('test/2.0');
+    // 指纹本身不变，否则会话会被切段
+    expect(r2.thread.sourceFingerprint).toBe('fp-1');
   });
 
   it('重复发送同一历史：归并且不重复入库', () => {
@@ -50,6 +81,28 @@ describe('ThreadManager', () => {
   it('不同开场白的请求各自成会话，不串线', () => {
     const r1 = resolve([U('会话一')]);
     const r2 = resolve([U('会话二')]);
+    expect(r2.thread.id).not.toBe(r1.thread.id);
+  });
+
+  /**
+   * 本次重构的核心回归点：所有调用方共用一个全局 Key，会话归并必须按来源隔离。
+   * 隔离失效时，两个人用同一条开场白（或 Claude Code 那种对所有用户几乎一致的
+   * system 提示词）会被并进同一条会话，操作员的回复直接串台。
+   */
+  it('不同来源即使消息完全相同，也不会被并成一条会话', () => {
+    const r1 = resolve([U('你好')], 'You are Claude Code, Anthropic official CLI.');
+    const r2 = resolve([U('你好')], 'You are Claude Code, Anthropic official CLI.', OTHER);
+
+    expect(r2.thread.id).not.toBe(r1.thread.id);
+    expect(listThreadMessages(db, r1.thread.id)).toHaveLength(2); // system + user
+    expect(listThreadMessages(db, r2.thread.id)).toHaveLength(2);
+  });
+
+  it('不同来源的历史长得一样时也不会互相认领', () => {
+    const r1 = resolve([U('u1')]);
+    appendMessage(db, { threadId: r1.thread.id, role: 'assistant', content: 'a1', source: 'api' });
+
+    const r2 = resolve([U('u1'), A('a1'), U('u2')], undefined, OTHER);
     expect(r2.thread.id).not.toBe(r1.thread.id);
   });
 
@@ -76,8 +129,9 @@ describe('ThreadManager', () => {
     resolve([U('p')]); // 会话 A，序列 [p]
     const now = Date.now();
     db.prepare(
-      "INSERT INTO threads (id, key_id, title, protocol, model, fingerprint, created_at, updated_at) VALUES ('t2', ?, 'p', 'openai', 'm', 'fp2', ?, ?)",
-    ).run(keyId, now, now);
+      `INSERT INTO threads (id, title, protocol, model, fingerprint, source_fingerprint, created_at, updated_at)
+       VALUES ('t2', 'p', 'openai', 'm', 'fp2', ?, ?, ?)`,
+    ).run(SOURCE.fingerprint, now, now);
     db.prepare(
       "INSERT INTO messages (id, thread_id, role, content, source, created_at) VALUES ('m1', 't2', 'user', 'p', 'api', ?)",
     ).run(now);

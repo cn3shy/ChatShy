@@ -4,6 +4,10 @@ import type { Db } from '../db/db.js';
 export const SETTING_DEFAULT_TIMEOUT_MS = 'default_timeout_ms';
 export const SETTING_MODEL_NAME = 'model_name';
 export const SETTING_ADMIN_PASSWORD_HASH = 'admin_password_hash';
+export const SETTING_CALLER_KEY = 'caller_key';
+
+/** 调用方 Key 前缀，与 OpenAI 生态的习惯保持一致 */
+export const CALLER_KEY_PREFIX = 'sk-chatshy-';
 
 export function getSetting(db: Db, key: string): string | null {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
@@ -33,6 +37,48 @@ export function getDefaultTimeoutMs(db: Db, fallback = 180_000): number {
 
 export function getModelName(db: Db, fallback = 'chatshy'): string {
   return getSetting(db, SETTING_MODEL_NAME) ?? fallback;
+}
+
+// ---- 调用方 Key（全局唯一，所有调用方共用）----
+//
+// 明文存储是刻意的：设置页需要随时查看/复制发给调用方。若存哈希，就只能像旧的多 Key
+// 体系那样"生成时显示一次"，一旦分发出去的配置丢了，就得重新生成并让所有人改配置。
+// 数据库文件本身就是本项目的信任边界（管理员密码哈希也在同一处）。
+
+export function getCallerKey(db: Db): string | null {
+  return getSetting(db, SETTING_CALLER_KEY);
+}
+
+/** 重新生成全局 Key 并返回。旧 Key 立即失效。 */
+export function regenerateCallerKey(db: Db): string {
+  const key = CALLER_KEY_PREFIX + crypto.randomBytes(32).toString('base64url');
+  setSetting(db, SETTING_CALLER_KEY, key);
+  return key;
+}
+
+export interface CallerKeyBootstrap {
+  source: 'env' | 'generated' | 'existing';
+  /** 仅 source === 'generated' 时非空，供启动日志打印一次 */
+  key: string | null;
+}
+
+/** 确保存在全局 Key：已有则不动；否则用环境变量播种或随机生成 */
+export function ensureCallerKey(db: Db, fromEnv: string | null): CallerKeyBootstrap {
+  if (getCallerKey(db) !== null) return { source: 'existing', key: null };
+  if (fromEnv !== null && fromEnv.length > 0) {
+    setSetting(db, SETTING_CALLER_KEY, fromEnv);
+    return { source: 'env', key: null };
+  }
+  return { source: 'generated', key: regenerateCallerKey(db) };
+}
+
+/**
+ * 恒定时间比较。先各自哈希再比，这样两边的长度恒等（32 字节），
+ * 不会因为提前返回而泄漏 key 的长度信息。
+ */
+export function callerKeyMatches(expected: string, provided: string): boolean {
+  const digest = (s: string): Buffer => crypto.createHash('sha256').update(s, 'utf8').digest();
+  return crypto.timingSafeEqual(digest(expected), digest(provided));
 }
 
 // ---- 密码哈希：Node 内置 scrypt，无原生依赖 ----

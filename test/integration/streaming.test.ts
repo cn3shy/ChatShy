@@ -132,19 +132,21 @@ describe('流式 SSE（集成）', () => {
 
   it('Anthropic 流式超时：先 message_start，后 event: error（overloaded）关闭', async () => {
     const s = await boot();
-    const res = await fetch(`${s.base}/v1/messages`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': s.shortKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-test',
-        max_tokens: 100,
-        stream: true,
-        messages: [{ role: 'user', content: '没人回复' }],
-      }),
+    // 全局超时临时调成 300ms（旧的 per-key shortKey 已随多 Key 体系移除）
+    const text = await s.withDefaultTimeout(300, async () => {
+      const res = await fetch(`${s.base}/v1/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': s.key, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-test',
+          max_tokens: 100,
+          stream: true,
+          messages: [{ role: 'user', content: '没人回复' }],
+        }),
+      });
+      expect(res.status).toBe(200);
+      return readSse(res);
     });
-    expect(res.status).toBe(200);
-
-    const text = await readSse(res);
     expect(text).toContain('event: message_start');
     expect(text).toContain('event: ping');
     expect(text).toContain('event: error');
@@ -154,14 +156,15 @@ describe('流式 SSE（集成）', () => {
 
   it('OpenAI 流式超时：error 帧后关闭，无 [DONE]', async () => {
     const s = await boot();
-    const res = await fetch(`${s.base}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${s.shortKey}` },
-      body: JSON.stringify({ messages: [{ role: 'user', content: '没人回复' }], stream: true }),
+    const text = await s.withDefaultTimeout(300, async () => {
+      const res = await fetch(`${s.base}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${s.key}` },
+        body: JSON.stringify({ messages: [{ role: 'user', content: '没人回复' }], stream: true }),
+      });
+      expect(res.status).toBe(200);
+      return readSse(res);
     });
-    expect(res.status).toBe(200);
-
-    const text = await readSse(res);
     expect(text).toContain('"code":"timeout"');
     expect(text).not.toContain('[DONE]');
   });

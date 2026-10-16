@@ -20,7 +20,6 @@ export interface JobEvent {
 }
 
 export interface CreateJobParams {
-  keyId: string;
   threadId: string;
   protocol: Protocol;
   mode: JobMode;
@@ -30,7 +29,6 @@ export interface CreateJobParams {
 
 export interface PendingJobInit {
   id: string;
-  keyId: string;
   threadId: string;
   protocol: Protocol;
   mode: JobMode;
@@ -39,7 +37,6 @@ export interface PendingJobInit {
 
 export class PendingJob {
   readonly id: string;
-  readonly keyId: string;
   readonly threadId: string;
   readonly protocol: Protocol;
   readonly mode: JobMode;
@@ -52,7 +49,6 @@ export class PendingJob {
 
   constructor(init: PendingJobInit) {
     this.id = init.id;
-    this.keyId = init.keyId;
     this.threadId = init.threadId;
     this.protocol = init.protocol;
     this.mode = init.mode;
@@ -109,7 +105,6 @@ export class JobQueue {
 
     const job = new PendingJob({
       id,
-      keyId: params.keyId,
       threadId: params.threadId,
       protocol: params.protocol,
       mode: params.mode,
@@ -148,14 +143,6 @@ export class JobQueue {
     if (job === undefined || job.status !== 'pending') return false;
     this.finish(job, { kind: 'cancelled' });
     return true;
-  }
-
-  countPendingForKey(keyId: string): number {
-    let n = 0;
-    for (const job of this.jobs.values()) {
-      if (job.keyId === keyId && job.status === 'pending') n++;
-    }
-    return n;
   }
 
   countPendingForThread(threadId: string): number {

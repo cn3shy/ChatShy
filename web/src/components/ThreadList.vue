@@ -31,8 +31,8 @@ function timeAgo(ts: number, now: number): string {
         </span>
       </div>
       <div class="row2">
-        <span class="tag">{{ t.keyName ?? '控制台' }}</span>
-        <span class="tag">{{ t.protocol }}</span>
+        <span class="tag source" :title="t.sourceUa">{{ t.sourceClient || '未知来源' }}</span>
+        <span class="tag ip">{{ t.sourceIp }}</span>
         <span class="time">{{ timeAgo(t.updatedAt, now) }}</span>
       </div>
       <div class="preview">{{ t.lastMessage }}</div>

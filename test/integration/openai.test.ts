@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
 import { afterEach, describe, expect, it } from 'vitest';
-import { updateKey } from '../../src/core/keys.js';
 import { listThreadMessages } from '../../src/core/threads.js';
 import { startTestServer, waitFor, type TestServer } from './helpers.js';
 
@@ -62,17 +61,6 @@ describe('OpenAI 兼容端点（集成）', () => {
     expect(body.error.code).toBe('invalid_api_key');
   });
 
-  it('禁用 key → 401', async () => {
-    const s = await boot();
-    updateKey(s.db, s.keyId, { enabled: false });
-    const res = await fetch(`${s.base}/v1/chat/completions`, {
-      method: 'POST',
-      headers: authHeaders(s.key),
-      body: JSON.stringify({ messages: [{ role: 'user', content: 'x' }] }),
-    });
-    expect(res.status).toBe(401);
-  });
-
   it('请求体不合法 → 400', async () => {
     const s = await boot();
     const res = await fetch(`${s.base}/v1/chat/completions`, {
@@ -87,63 +75,18 @@ describe('OpenAI 兼容端点（集成）', () => {
 
   it('无人回复 → 504 timeout 错误体', async () => {
     const s = await boot();
-    const res = await fetch(`${s.base}/v1/chat/completions`, {
-      method: 'POST',
-      headers: authHeaders(s.shortKey),
-      body: JSON.stringify({ messages: [{ role: 'user', content: '没人回复' }] }),
-    });
+    // 超时改成全局设置项，测试里临时调成 300ms
+    const res = await s.withDefaultTimeout(300, () =>
+      fetch(`${s.base}/v1/chat/completions`, {
+        method: 'POST',
+        headers: authHeaders(s.key),
+        body: JSON.stringify({ messages: [{ role: 'user', content: '没人回复' }] }),
+      }),
+    );
     expect(res.status).toBe(504);
     const body = (await res.json()) as { error: { code: string; type: string } };
     expect(body.error.code).toBe('timeout');
     expect(body.error.type).toBe('server_error');
-  });
-
-  it('日限额 → 429 insufficient_quota', async () => {
-    const s = await boot();
-    const limited = s.addKey({ name: 'limited', timeoutMs: 60_000, dailyLimit: 1 });
-
-    const first = fetch(`${s.base}/v1/chat/completions`, {
-      method: 'POST',
-      headers: authHeaders(limited.plaintext),
-      body: JSON.stringify({ messages: [{ role: 'user', content: '第一次' }] }),
-    });
-    await waitFor(() => s.queue.listPending().length === 1);
-    s.queue.reply(s.queue.listPending()[0]!.id, 'ok');
-    expect((await first).status).toBe(200);
-
-    const second = await fetch(`${s.base}/v1/chat/completions`, {
-      method: 'POST',
-      headers: authHeaders(limited.plaintext),
-      body: JSON.stringify({ messages: [{ role: 'user', content: '第二次' }] }),
-    });
-    expect(second.status).toBe(429);
-    const body = (await second.json()) as { error: { type: string } };
-    expect(body.error.type).toBe('insufficient_quota');
-  });
-
-  it('挂起并发上限 → 429 rate_limit_error', async () => {
-    const s = await boot();
-    const capped = s.addKey({ name: 'capped', timeoutMs: 60_000, maxPending: 1 });
-
-    const first = fetch(`${s.base}/v1/chat/completions`, {
-      method: 'POST',
-      headers: authHeaders(capped.plaintext),
-      body: JSON.stringify({ messages: [{ role: 'user', content: '占用并发' }] }),
-    });
-    await waitFor(() => s.queue.countPendingForKey(capped.id) === 1);
-
-    const second = await fetch(`${s.base}/v1/chat/completions`, {
-      method: 'POST',
-      headers: authHeaders(capped.plaintext),
-      body: JSON.stringify({ messages: [{ role: 'user', content: '超上限' }] }),
-    });
-    expect(second.status).toBe(429);
-    const body = (await second.json()) as { error: { type: string } };
-    expect(body.error.type).toBe('rate_limit_error');
-
-    // 清理：忽略挂起请求，让第一个连接收尾
-    s.queue.ignore(s.queue.listPending()[0]!.id);
-    expect((await first).status).toBe(504);
   });
 
   it('多轮会话归并：第二轮请求带历史归入同一会话', async () => {
@@ -172,6 +115,30 @@ describe('OpenAI 兼容端点（集成）', () => {
 
     const msgs = listThreadMessages(s.db, job1.threadId);
     expect(msgs.map((m) => m.content)).toEqual(['u1', 'a1', 'u2', 'a2']);
+  });
+
+  /**
+   * 本次重构的核心回归点。所有调用方共用一个全局 Key，会话归并因此改按来源指纹隔离。
+   * 若隔离失效，两个不同的人发相同的开场白（或 Claude Code 那种对所有用户几乎一致的
+   * system 提示词）会被并进同一条会话，回复直接串台。
+   */
+  it('不同来源即使消息完全相同，也不会被并成一条会话', async () => {
+    const s = await boot();
+    for (const ua of ['CherryStudio/1.0.0', 'ChatBox/2.5.0']) {
+      const res = fetch(`${s.base}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { ...authHeaders(s.key), 'user-agent': ua },
+        body: JSON.stringify({ messages: [{ role: 'user', content: '你好' }] }),
+      });
+      await waitFor(() => s.queue.listPending().length === 1);
+      s.queue.reply(s.queue.listPending()[0]!.id, '好的');
+      await res;
+    }
+
+    const rows = s.db.prepare('SELECT source_client FROM threads ORDER BY created_at').all() as {
+      source_client: string;
+    }[];
+    expect(rows.map((r) => r.source_client)).toEqual(['Cherry Studio', 'ChatBox']);
   });
 
   it('CORS 预检通过（浏览器网页客户端可用）', async () => {

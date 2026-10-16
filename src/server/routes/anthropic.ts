@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDefaultTimeoutMs, getModelName } from '../../core/settings.js';
+import { requestSource } from '../../core/source.js';
 import { appendMessage, linkLatestUserMessageToJob, resolveThread } from '../../core/threads.js';
 import {
   anthropicErrors,
@@ -13,7 +14,7 @@ import {
 } from '../../protocol/anthropic.js';
 import { estimateTokens } from '../../protocol/types.js';
 import type { ServerContext } from '../app.js';
-import { checkKeyLimits, getAnthropicKey } from '../auth.js';
+import { requireCallerKey } from '../auth.js';
 import { serveNonStream, serveStream } from '../serve.js';
 
 /**
@@ -23,33 +24,26 @@ import { serveNonStream, serveStream } from '../serve.js';
  */
 export function registerAnthropicRoutes(app: FastifyInstance, ctx: ServerContext): void {
   const messagesHandler = async (req: FastifyRequest, reply: FastifyReply) => {
-    const key = getAnthropicKey(ctx.db, req);
-    if (key === null) return reply.code(401).send(anthropicErrors.invalidKey());
+    if (!requireCallerKey(ctx.db, req)) return reply.code(401).send(anthropicErrors.invalidKey());
 
     const parsed = parseAnthropicRequest(req.body);
     if (!parsed.ok) return reply.code(400).send(anthropicErrors.badRequest(parsed.message));
 
-    const violation = checkKeyLimits(ctx.db, ctx.queue, key);
-    if (violation === 'quota') return reply.code(429).send(anthropicErrors.quota());
-    if (violation === 'pending') return reply.code(429).send(anthropicErrors.tooManyPending());
-
     const model = parsed.value.prompt.model || getModelName(ctx.db);
     const { thread } = resolveThread(ctx.db, {
-      keyId: key.id,
+      source: requestSource(req),
       protocol: 'anthropic',
       model,
       system: parsed.value.prompt.system,
       messages: parsed.value.prompt.messages,
     });
 
-    const timeoutMs = key.timeoutMs ?? getDefaultTimeoutMs(ctx.db);
     const job = ctx.queue.create({
-      keyId: key.id,
       threadId: thread.id,
       protocol: 'anthropic',
       mode: parsed.value.stream ? 'stream' : 'non_stream',
       requestJson: JSON.stringify(req.body ?? {}),
-      timeoutMs,
+      timeoutMs: getDefaultTimeoutMs(ctx.db),
     });
     linkLatestUserMessageToJob(ctx.db, thread.id, job.id);
 
@@ -108,8 +102,7 @@ export function registerAnthropicRoutes(app: FastifyInstance, ctx: ServerContext
 
   /** Claude Code 会调用 count_tokens 估算上下文；按字符估算返回即可 */
   const countTokensHandler = async (req: FastifyRequest, reply: FastifyReply) => {
-    const key = getAnthropicKey(ctx.db, req);
-    if (key === null) return reply.code(401).send(anthropicErrors.invalidKey());
+    if (!requireCallerKey(ctx.db, req)) return reply.code(401).send(anthropicErrors.invalidKey());
 
     const parsed = parseAnthropicRequest(req.body);
     if (!parsed.ok) return reply.code(400).send(anthropicErrors.badRequest(parsed.message));

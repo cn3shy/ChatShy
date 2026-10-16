@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { openDb, type Db } from '../../src/db/db.js';
 import { migrate } from '../../src/db/migrate.js';
 import {
+  callerKeyMatches,
   ensureAdminPassword,
+  ensureCallerKey,
+  getCallerKey,
   getDefaultTimeoutMs,
   getModelName,
   hashPassword,
   initSettings,
+  regenerateCallerKey,
   setSetting,
   verifyAdminPassword,
   verifyPassword,
@@ -66,5 +70,42 @@ describe('settings', () => {
     expect(third.source).toBe('generated');
     expect(third.password).not.toBeNull();
     expect(verifyAdminPassword(db2, third.password!)).toBe(true);
+  });
+
+  it('ensureCallerKey：环境变量播种；已有则不动；无则随机生成', () => {
+    const db = freshDb();
+    expect(getCallerKey(db)).toBeNull();
+
+    const first = ensureCallerKey(db, 'sk-chatshy-from-env');
+    expect(first.source).toBe('env');
+    expect(getCallerKey(db)).toBe('sk-chatshy-from-env');
+
+    // 已有值后，环境变量不覆盖
+    const second = ensureCallerKey(db, 'another');
+    expect(second.source).toBe('existing');
+    expect(getCallerKey(db)).toBe('sk-chatshy-from-env');
+
+    const db2 = freshDb();
+    const third = ensureCallerKey(db2, null);
+    expect(third.source).toBe('generated');
+    expect(third.key).toMatch(/^sk-chatshy-/);
+    expect(getCallerKey(db2)).toBe(third.key);
+  });
+
+  it('regenerateCallerKey 换新值，旧值立即失效', () => {
+    const db = freshDb();
+    const old = ensureCallerKey(db, null).key!;
+    const fresh = regenerateCallerKey(db);
+
+    expect(fresh).not.toBe(old);
+    expect(getCallerKey(db)).toBe(fresh);
+    expect(callerKeyMatches(fresh, old)).toBe(false);
+  });
+
+  it('callerKeyMatches：相等为真，长度不一的输入也不抛异常', () => {
+    expect(callerKeyMatches('sk-chatshy-abc', 'sk-chatshy-abc')).toBe(true);
+    // 先哈希再比，两边长度恒等，所以不会触发 timingSafeEqual 的长度异常
+    expect(callerKeyMatches('sk-chatshy-abc', 'sk-chatshy-abcdefghij')).toBe(false);
+    expect(callerKeyMatches('', 'x')).toBe(false);
   });
 });

@@ -1,29 +1,37 @@
 import crypto from 'node:crypto';
 import type { Db } from '../db/db.js';
 import type { ChatMsg, Protocol } from '../protocol/types.js';
+import type { RequestSource } from './source.js';
 
 /**
  * 会话归并（设计 §5.2）。
  *
- * source 语义：
+ * 归并作用域是**请求来源**（source_fingerprint，见 core/source.ts），不是 key。
+ * 多个调用方共用同一个全局 Key，若不做来源隔离，不同人的对话会被并成一条：
+ * Claude Code 的 system 提示词对所有用户几乎一致，内容指纹兜底极易碰撞。
+ *
+ * message.source 语义：
  * - 'api'     —— 属于 API 转录本的消息（调用方发来的 user、投递给调用方的操作员回复），参与前缀匹配
- * - 'console' —— 操作台测试窗口里直接发的消息、超时后补发的未送达回复，不参与匹配
+ * - 'console' —— 超时后补发的未送达回复，只在操作台存档展示，不参与匹配
  *
  * role='system' 的消息仅用于展示（首次建会话时落一条），不参与匹配。
  */
 
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type MessageSource = 'api' | 'console';
-/** 'console' = 操作台测试会话，不绑定任何 key */
+/** 'console' 是历史遗留值（旧库里的操作台测试会话），新代码不再产生 */
 export type ThreadProtocol = Protocol | 'console';
 
 export interface ThreadRecord {
   id: string;
-  keyId: string | null;
   title: string;
   protocol: ThreadProtocol;
   model: string;
   fingerprint: string;
+  sourceIp: string;
+  sourceUa: string;
+  sourceClient: string;
+  sourceFingerprint: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -40,11 +48,14 @@ export interface MessageRecord {
 
 interface ThreadRow {
   id: string;
-  key_id: string | null;
   title: string;
   protocol: string;
   model: string;
   fingerprint: string;
+  source_ip: string;
+  source_ua: string;
+  source_client: string;
+  source_fingerprint: string;
   created_at: number;
   updated_at: number;
 }
@@ -62,11 +73,14 @@ interface MessageRow {
 function threadToRecord(row: ThreadRow): ThreadRecord {
   return {
     id: row.id,
-    keyId: row.key_id,
     title: row.title,
     protocol: row.protocol as ThreadProtocol,
     model: row.model,
     fingerprint: row.fingerprint,
+    sourceIp: row.source_ip,
+    sourceUa: row.source_ua,
+    sourceClient: row.source_client,
+    sourceFingerprint: row.source_fingerprint,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -85,29 +99,32 @@ function messageToRecord(row: MessageRow): MessageRecord {
 }
 
 export interface ResolveParams {
-  keyId: string;
+  /** 请求来源；会话归并的作用域 */
+  source: RequestSource;
   protocol: Protocol;
   model: string;
   system?: string;
   messages: ChatMsg[];
 }
 
-export function fingerprintOf(system: string, firstUserContent: string): string {
+/** 内容指纹：system + 第一条 user 消息，用于前缀匹配失败时的兜底归并 */
+export function contentFingerprint(system: string, firstUserContent: string): string {
   return crypto.createHash('sha256').update(`${system}\u0000${firstUserContent}`, 'utf8').digest('hex');
 }
 
 /**
- * 把一次 API 请求归并到会话：优先前缀匹配（取最长），其次指纹兜底，否则新建。
+ * 把一次 API 请求归并到会话：优先前缀匹配（取最长），其次内容指纹兜底，否则新建。
+ * 候选集**只限同一来源**——所有调用方共用一个全局 Key，绝不允许互相认领会话。
  * 返回追加的新消息（客户端已带过的历史不会重复入库）。
  */
 export function resolveThread(db: Db, params: ResolveParams): { thread: ThreadRecord; appended: MessageRecord[] } {
   const now = Date.now();
   const firstUser = params.messages.find((m) => m.role === 'user');
-  const fingerprint = fingerprintOf(params.system ?? '', firstUser?.content ?? '');
+  const fingerprint = contentFingerprint(params.system ?? '', firstUser?.content ?? '');
 
   const threadRows = db
-    .prepare('SELECT * FROM threads WHERE key_id = ? ORDER BY updated_at DESC, rowid DESC')
-    .all(params.keyId) as ThreadRow[];
+    .prepare('SELECT * FROM threads WHERE source_fingerprint = ? ORDER BY updated_at DESC, rowid DESC')
+    .all(params.source.fingerprint) as ThreadRow[];
 
   let matched: ThreadRow | null = null;
   let matchedSeq: MessageRow[] = [];
@@ -124,7 +141,7 @@ export function resolveThread(db: Db, params: ResolveParams): { thread: ThreadRe
     }
   }
 
-  // 2) 指纹兜底：system + 第一条 user 消息一致，归并到最近活跃的会话
+  // 2) 内容指纹兜底：system + 第一条 user 消息一致，归并到本来源内最近活跃的会话
   if (matched === null) {
     const byFp = threadRows.find((t) => t.fingerprint === fingerprint);
     if (byFp !== undefined) {
@@ -137,22 +154,37 @@ export function resolveThread(db: Db, params: ResolveParams): { thread: ThreadRe
   let appendedRows: MessageRow[];
 
   if (matched !== null) {
-    threadRow = matched;
     const skip = commonPrefixLength(matchedSeq, params.messages);
-    appendedRows = insertApiMessages(db, threadRow.id, params.messages.slice(skip), now);
-    db.prepare('UPDATE threads SET updated_at = ? WHERE id = ?').run(now, threadRow.id);
+    appendedRows = insertApiMessages(db, matched.id, params.messages.slice(skip), now);
+    // 来源信息随最新一次请求刷新（同一来源的客户端可能升级版本号）
+    db.prepare(
+      'UPDATE threads SET updated_at = ?, source_ip = ?, source_ua = ?, source_client = ? WHERE id = ?',
+    ).run(now, params.source.ip, params.source.ua, params.source.client, matched.id);
+    // 同步内存中的行，保证返回给调用方的记录是刷新后的值
+    threadRow = {
+      ...matched,
+      updated_at: now,
+      source_ip: params.source.ip,
+      source_ua: params.source.ua,
+      source_client: params.source.client,
+    };
   } else {
     const id = crypto.randomUUID();
     db.prepare(
-      `INSERT INTO threads (id, key_id, title, protocol, model, fingerprint, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO threads (id, title, protocol, model, fingerprint,
+                            source_ip, source_ua, source_client, source_fingerprint,
+                            created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
-      params.keyId,
       titleFrom(firstUser?.content ?? ''),
       params.protocol,
       params.model,
       fingerprint,
+      params.source.ip,
+      params.source.ua,
+      params.source.client,
+      params.source.fingerprint,
       now,
       now,
     );
@@ -171,18 +203,7 @@ export function getThread(db: Db, id: string): ThreadRecord | null {
   return row === undefined ? null : threadToRecord(row);
 }
 
-/** 新建操作台测试会话（无 key，不参与 API 归并） */
-export function createConsoleThread(db: Db, title: string): ThreadRecord {
-  const id = crypto.randomUUID();
-  const now = Date.now();
-  db.prepare(
-    `INSERT INTO threads (id, key_id, title, protocol, model, fingerprint, created_at, updated_at)
-     VALUES (?, NULL, ?, 'console', '', '', ?, ?)`,
-  ).run(id, title.slice(0, 50), now, now);
-  return getThread(db, id)!;
-}
-
-/** 完整消息历史（含 system 与控制台消息），按时间升序 */
+/** 完整消息历史（含 system 与未送达的补发回复），按时间升序 */
 export function listThreadMessages(db: Db, threadId: string): MessageRecord[] {
   return (
     db

@@ -1,0 +1,476 @@
+/*
+ * 调用方页面（/chat）的样式。参考豆包的浅色布局。
+ *
+ * 刻意用 .db- 前缀并全部挂在 .db-page 下：
+ * 操作台（App.vue）与这个页面共用 style.css，若复用 .msg / .messages / .composer
+ * 这些类名，改这里会把操作台一起改坏。
+ */
+
+.db-page {
+  --db-bg: #f7f8fa;
+  --db-card: #ffffff;
+  --db-text: #1f2329;
+  --db-muted: #8a9099;
+  --db-border: #e5e6eb;
+  --db-hover: #f2f3f5;
+  --db-accent: #3b6fff;
+  --db-accent-soft: rgba(59, 111, 255, 0.1);
+  --db-danger: #e5484d;
+
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--db-bg);
+  color: var(--db-text);
+  font-size: 15px;
+}
+
+/* ---- 顶栏 ---- */
+
+.db-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--db-bg);
+}
+
+.db-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.db-brand-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--db-accent);
+}
+
+.db-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--db-muted);
+  font-size: 1rem;
+  padding: 6px 8px;
+  border-radius: 8px;
+  line-height: 1;
+}
+
+.db-icon-btn:hover {
+  background: var(--db-hover);
+  color: var(--db-text);
+}
+
+/* ---- 消息区 ---- */
+
+.db-main {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.db-col {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 8px 20px 24px;
+}
+
+.db-welcome {
+  text-align: center;
+  padding: 14vh 0 0;
+}
+
+.db-welcome h1 {
+  font-size: 1.6rem;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.db-welcome p {
+  color: var(--db-muted);
+  font-size: 0.9rem;
+  margin: 0 0 26px;
+}
+
+.db-tips {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.db-tip {
+  background: var(--db-card);
+  border: 1px solid var(--db-border);
+  color: var(--db-text);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.86rem;
+}
+
+.db-tip:hover {
+  border-color: var(--db-accent);
+  color: var(--db-accent);
+  background: var(--db-accent-soft);
+}
+
+.db-msg {
+  display: flex;
+  gap: 10px;
+  margin: 18px 0;
+  align-items: flex-start;
+}
+
+.db-msg.user {
+  justify-content: flex-end;
+}
+
+.db-avatar {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--db-accent);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.db-bubble {
+  max-width: 82%;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+/* 助手：无气泡，直接铺文本（豆包的做法） */
+.db-msg.assistant .db-bubble {
+  padding-top: 2px;
+}
+
+/* 调用方自己：右对齐浅色气泡 */
+.db-msg.user .db-bubble {
+  background: var(--db-card);
+  border: 1px solid var(--db-border);
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+
+.db-md > :first-child {
+  margin-top: 0;
+}
+
+.db-md > :last-child {
+  margin-bottom: 0;
+}
+
+.db-md p {
+  margin: 0.5em 0;
+}
+
+.db-md pre {
+  border-radius: 10px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.db-md code {
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 0.88em;
+}
+
+.db-md :not(pre) > code {
+  background: var(--db-hover);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.db-md table {
+  border-collapse: collapse;
+}
+
+.db-md th,
+.db-md td {
+  border: 1px solid var(--db-border);
+  padding: 5px 9px;
+}
+
+/* “正在思考”三点动画，对应豆包的等待态 */
+.db-thinking {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.db-thinking i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--db-muted);
+  animation: db-bounce 1.2s infinite ease-in-out;
+}
+
+.db-thinking i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.db-thinking i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes db-bounce {
+  0%,
+  70%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.db-error {
+  color: var(--db-danger);
+  text-align: center;
+  font-size: 0.88rem;
+  margin: 12px 0;
+}
+
+/* ---- 输入区 ---- */
+
+.db-composer-wrap {
+  padding: 0 20px 18px;
+}
+
+.db-composer {
+  max-width: 780px;
+  margin: 0 auto;
+  background: var(--db-card);
+  border: 1px solid var(--db-border);
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(31, 35, 41, 0.06);
+  padding: 12px 14px 10px;
+  transition: border-color 0.15s;
+}
+
+.db-composer:focus-within {
+  border-color: #c9d4ee;
+}
+
+.db-ta {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.6;
+  max-height: 200px;
+  padding: 2px 2px 0;
+}
+
+.db-ta::placeholder {
+  color: var(--db-muted);
+}
+
+.db-ta:disabled {
+  opacity: 0.6;
+}
+
+.db-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.db-pill {
+  background: var(--db-hover);
+  border: none;
+  color: var(--db-muted);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-pill:hover {
+  color: var(--db-accent);
+  background: var(--db-accent-soft);
+}
+
+.db-send {
+  margin-left: auto;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: var(--db-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.db-send:hover:not(:disabled) {
+  background: #2f5fe0;
+}
+
+.db-send:disabled {
+  background: #c9ced6;
+  cursor: not-allowed;
+}
+
+.db-send.stop {
+  background: var(--db-danger);
+}
+
+.db-send svg {
+  width: 17px;
+  height: 17px;
+}
+
+.db-hint {
+  color: var(--db-muted);
+  font-size: 0.8rem;
+  margin: 8px 2px 0;
+}
+
+/* ---- 设置弹窗 ---- */
+
+.db-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 35, 41, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 10;
+}
+
+.db-modal {
+  background: var(--db-card);
+  border-radius: 16px;
+  padding: 20px 22px;
+  width: min(420px, 100%);
+  box-shadow: 0 10px 40px rgba(31, 35, 41, 0.18);
+}
+
+.db-modal h3 {
+  margin: 0 0 16px;
+  font-size: 1.05rem;
+}
+
+.db-field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.db-field span {
+  display: block;
+  color: var(--db-muted);
+  font-size: 0.8rem;
+  margin-bottom: 5px;
+}
+
+.db-field input,
+.db-field select {
+  width: 100%;
+  background: var(--db-bg);
+  border: 1px solid var(--db-border);
+  border-radius: 9px;
+  padding: 8px 11px;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.db-field input:focus,
+.db-field select:focus {
+  border-color: var(--db-accent);
+}
+
+.db-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--db-muted);
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+
+.db-modal-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.db-btn {
+  border-radius: 9px;
+  padding: 8px 16px;
+  font-size: 0.88rem;
+  border: 1px solid transparent;
+}
+
+.db-btn.primary {
+  margin-left: auto;
+  background: var(--db-accent);
+  color: #fff;
+}
+
+.db-btn.primary:hover {
+  background: #2f5fe0;
+}
+
+.db-btn.ghost {
+  background: transparent;
+  border-color: var(--db-border);
+  color: var(--db-muted);
+}
+
+.db-btn.ghost:hover {
+  color: var(--db-danger);
+  border-color: var(--db-danger);
+}
+
+.db-note {
+  color: var(--db-muted);
+  font-size: 0.78rem;
+  margin: 14px 0 0;
+}
+
+/* ---- 响应式 ---- */
+
+@media (max-width: 760px) {
+  .db-col,
+  .db-composer {
+    max-width: 100%;
+  }
+
+  .db-bubble {
+    max-width: 88%;
+  }
+
+  .db-welcome {
+    padding-top: 8vh;
+  }
+}

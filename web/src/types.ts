@@ -1,11 +1,19 @@
 export type Protocol = 'openai' | 'anthropic' | 'console';
 
-export interface ThreadSummary {
+/** 请求来源（取代了旧的多 Key 体系里的 keyName） */
+export interface ThreadSource {
+  /** UA 识别出的客户端名，如「Claude Code」「Cherry Studio」 */
+  sourceClient: string;
+  sourceIp: string;
+  /** 原始 User-Agent，详情里展示 */
+  sourceUa: string;
+}
+
+export interface ThreadSummary extends ThreadSource {
   id: string;
   title: string;
   protocol: Protocol;
   model: string;
-  keyName: string | null;
   createdAt: number;
   updatedAt: number;
   lastMessage: string;
@@ -32,12 +40,11 @@ export interface PendingJob {
 }
 
 export interface ThreadDetail {
-  thread: {
+  thread: ThreadSource & {
     id: string;
     title: string;
     protocol: Protocol;
     model: string;
-    keyName: string | null;
     createdAt: number;
     updatedAt: number;
   };
@@ -45,19 +52,9 @@ export interface ThreadDetail {
   pendingJobs: PendingJob[];
 }
 
-export interface KeyInfo {
-  id: string;
-  name: string;
-  keyPrefix: string;
-  enabled: boolean;
-  timeoutMs: number | null;
-  dailyLimit: number | null;
-  maxPending: number;
-  createdAt: number;
-  lastUsedAt: number | null;
-}
-
 export interface SettingsInfo {
   defaultTimeoutMs: number;
   modelName: string;
+  /** 全局唯一的调用方 Key，所有调用方共用 */
+  callerKey: string;
 }

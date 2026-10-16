@@ -39,7 +39,7 @@ describe('管理端 API（集成）', () => {
   it('未登录 → 401；登录后 me 可见', async () => {
     const s = await boot();
     expect((await fetch(`${s.base}/admin/api/threads`)).status).toBe(401);
-    expect((await fetch(`${s.base}/admin/api/keys`)).status).toBe(401);
+    expect((await fetch(`${s.base}/admin/api/settings`)).status).toBe(401);
 
     const cookie = await login(s);
     const me = await fetch(`${s.base}/admin/api/me`, { headers: { cookie } });
@@ -70,17 +70,24 @@ describe('管理端 API（集成）', () => {
 
     const pendingReq = fetch(`${s.base}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${s.key}` },
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${s.key}`,
+        'user-agent': 'CherryStudio/1.0.0',
+      },
       body: JSON.stringify({ model: 'gpt-test', messages: [{ role: 'user', content: '管理端测试' }] }),
     });
     await waitFor(() => s.queue.listPending().length === 1);
 
-    const list = await fetchJson<{ threads: Array<{ id: string; keyName: string; pendingCount: number; pendingJobId: string; pendingDeadlineAt: number; title: string; lastMessage: string }> }>(
+    const list = await fetchJson<{ threads: Array<{ id: string; sourceClient: string; sourceIp: string; sourceUa: string; pendingCount: number; pendingJobId: string; pendingDeadlineAt: number; title: string; lastMessage: string }> }>(
       `${s.base}/admin/api/threads`,
       { headers: { cookie } },
     );
     const thread = list.body.threads.find((t) => t.pendingCount === 1)!;
-    expect(thread.keyName).toBe('normal');
+    // 会话上打的是"来源"标签，取代了原来的 keyName
+    expect(thread.sourceClient).toBe('Cherry Studio');
+    expect(thread.sourceIp).toBe('127.0.0.1');
+    expect(thread.sourceUa).toBe('CherryStudio/1.0.0');
     expect(thread.title).toBe('管理端测试');
     expect(thread.pendingDeadlineAt).toBeGreaterThan(Date.now());
 
@@ -141,11 +148,13 @@ describe('管理端 API（集成）', () => {
     const s = await boot();
     const cookie = await login(s);
 
-    const res = await fetch(`${s.base}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${s.shortKey}` },
-      body: JSON.stringify({ messages: [{ role: 'user', content: '超时了' }] }),
-    });
+    const res = await s.withDefaultTimeout(300, () =>
+      fetch(`${s.base}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${s.key}` },
+        body: JSON.stringify({ messages: [{ role: 'user', content: '超时了' }] }),
+      }),
+    );
     expect(res.status).toBe(504);
 
     const job = s.db.prepare('SELECT id, thread_id FROM jobs ORDER BY created_at DESC LIMIT 1').get() as {
@@ -182,55 +191,44 @@ describe('管理端 API（集成）', () => {
     expect(again.status).toBe(200);
   });
 
-  it('Key CRUD：明文只返回一次、列表不泄露哈希、禁用后 401、删除生效', async () => {
+  it('全局调用方 Key：设置页可见、可重新生成、旧 Key 立即失效', async () => {
     const s = await boot();
     const cookie = await login(s);
 
-    const created = await fetchJson<{ key: { id: string; keyPrefix: string; enabled: boolean }; plaintext: string }>(
-      `${s.base}/admin/api/keys`,
-      { method: 'POST', headers: jsonHeaders(cookie), body: JSON.stringify({ name: 'bob', timeoutMs: 60_000 }) },
-    );
-    expect(created.status).toBe(200);
-    expect(created.body.plaintext).toMatch(/^sk-chatshy-/);
-    expect(created.body.key.keyPrefix.endsWith('…')).toBe(true);
-
-    const list = await fetchJson<{ keys: Array<Record<string, unknown>> }>(`${s.base}/admin/api/keys`, {
+    const settings = await fetchJson<{ callerKey: string }>(`${s.base}/admin/api/settings`, {
       headers: { cookie },
     });
-    const bob = list.body.keys.find((k) => k.id === created.body.key.id)!;
-    expect(Object.values(bob)).not.toContain(created.body.plaintext);
-    expect('keyHash' in bob).toBe(false);
+    expect(settings.body.callerKey).toBe(s.key);
 
-    // 新 key 可用
-    const call = fetch(`${s.base}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${created.body.plaintext}` },
-      body: JSON.stringify({ messages: [{ role: 'user', content: 'bob 的请求' }] }),
-    });
+    const call = (key: string): Promise<Response> =>
+      fetch(`${s.base}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+        body: JSON.stringify({ messages: [{ role: 'user', content: 'x' }] }),
+      });
+
+    // 当前 key 可用
+    const first = call(s.key);
     await waitFor(() => s.queue.listPending().length === 1);
     s.queue.reply(s.queue.listPending()[0]!.id, 'ok');
-    expect((await call).status).toBe(200);
+    expect((await first).status).toBe(200);
 
-    // 禁用 → 401
-    await fetchJson(`${s.base}/admin/api/keys/${created.body.key.id}`, {
-      method: 'PATCH',
-      headers: jsonHeaders(cookie),
-      body: JSON.stringify({ enabled: false }),
-    });
-    const disabled = await fetch(`${s.base}/v1/chat/completions`, {
+    // 重新生成
+    const regen = await fetchJson<{ callerKey: string }>(`${s.base}/admin/api/caller-key`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${created.body.plaintext}` },
-      body: JSON.stringify({ messages: [{ role: 'user', content: 'x' }] }),
+      headers: jsonHeaders(cookie),
+      body: '{}',
     });
-    expect(disabled.status).toBe(401);
+    expect(regen.status).toBe(200);
+    expect(regen.body.callerKey).toMatch(/^sk-chatshy-/);
+    expect(regen.body.callerKey).not.toBe(s.key);
 
-    // 删除
-    expect(
-      (await fetch(`${s.base}/admin/api/keys/${created.body.key.id}`, { method: 'DELETE', headers: { cookie } })).status,
-    ).toBe(200);
-    expect(
-      (await fetch(`${s.base}/admin/api/keys/${created.body.key.id}`, { method: 'PATCH', headers: jsonHeaders(cookie), body: '{}' })).status,
-    ).toBe(404);
+    // 旧 key 立即失效；新 key 可用
+    expect((await call(s.key)).status).toBe(401);
+    const withNew = call(regen.body.callerKey);
+    await waitFor(() => s.queue.listPending().length === 1);
+    s.queue.reply(s.queue.listPending()[0]!.id, 'ok');
+    expect((await withNew).status).toBe(200);
   });
 
   it('设置：超时与模型名可改；改密码需 current_password', async () => {
@@ -277,40 +275,6 @@ describe('管理端 API（集成）', () => {
       body: JSON.stringify({ password: 'newpass123' }),
     });
     expect(relogin.status).toBe(200);
-  });
-
-  it('控制台测试会话：新建、以 user/assistant 发消息、详情可见', async () => {
-    const s = await boot();
-    const cookie = await login(s);
-
-    const created = await fetchJson<{ thread: { id: string; title: string; protocol: string } }>(
-      `${s.base}/admin/api/threads`,
-      { method: 'POST', headers: jsonHeaders(cookie), body: JSON.stringify({ title: '我的测试' }) },
-    );
-    expect(created.body.thread.title).toBe('我的测试');
-    expect(created.body.thread.protocol).toBe('console');
-
-    const threadId = created.body.thread.id;
-    await fetchJson(`${s.base}/admin/api/threads/${threadId}/messages`, {
-      method: 'POST',
-      headers: jsonHeaders(cookie),
-      body: JSON.stringify({ role: 'user', content: '自问' }),
-    });
-    await fetchJson(`${s.base}/admin/api/threads/${threadId}/messages`, {
-      method: 'POST',
-      headers: jsonHeaders(cookie),
-      body: JSON.stringify({ role: 'assistant', content: '自答' }),
-    });
-
-    const detail = await fetchJson<{ messages: Array<{ role: string; content: string; source: string; delivered: boolean }> }>(
-      `${s.base}/admin/api/threads/${threadId}`,
-      { headers: { cookie } },
-    );
-    expect(detail.body.messages.map((m) => [m.role, m.content, m.source])).toEqual([
-      ['user', '自问', 'console'],
-      ['assistant', '自答', 'console'],
-    ]);
-    expect(detail.body.messages.every((m) => m.delivered)).toBe(true);
   });
 
   it('SSE 事件流：hello → job.created → job.replied', async () => {
