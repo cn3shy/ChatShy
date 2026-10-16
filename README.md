@@ -71,7 +71,9 @@ export ANTHROPIC_API_KEY="sk-chatshy-..."      # 或 ANTHROPIC_AUTH_TOKEN，两�
 
 > - `ANTHROPIC_BASE_URL` **不要**以 `/v1` 结尾（SDK 会自己拼 `/v1/messages`，写成 `…/v1` 会请求成 `/v1/v1/messages`）。ChatShy 已对误带 `/v1` 的写法做了兼容，但正确配法是不带。
 > - 鉴权同时接受 `x-api-key`（ANTHROPIC_API_KEY）与 `Authorization: Bearer`（ANTHROPIC_AUTH_TOKEN）。
-> - Claude Code 会用到的 `POST /v1/messages/count_tokens` 与 `/api/hello` 连通性探测均已实现。
+> - Claude Code 会用到的 `POST /v1/messages/count_tokens`、`/api/hello` 探测、遥测路径均已实现（遥测一律 200，避免客户端重试风暴）。
+> - 等待真人回复不会断流：网关建流后每 15 秒发 ping，新版 Claude Code 会把 ping 计入"仍在传输"，默认 5 分钟空闲看门狗不会触发。若仍出现 5 分钟断开，可尝试设置 `API_FORCE_IDLE_TIMEOUT=0` 并升级到最新版。
+> - 可选加固：`export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` 关闭遥测——旧版 Claude Code 的遥测可能把网关凭据发往官方服务器。
 
 curl 流式：
 

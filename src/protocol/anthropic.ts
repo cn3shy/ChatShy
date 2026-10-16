@@ -104,7 +104,13 @@ export function renderMessage(p: MessageParams): object {
     content: [{ type: 'text', text: p.content }],
     stop_reason: 'end_turn',
     stop_sequence: null,
-    usage: { input_tokens: p.inputTokens, output_tokens: p.outputTokens },
+    // cache_* 字段给 0：部分客户端（Claude Code 等）会展示缓存用量
+    usage: {
+      input_tokens: p.inputTokens,
+      output_tokens: p.outputTokens,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    },
   };
 }
 
@@ -120,7 +126,12 @@ export function messageStartFrame(p: { id: string; model: string; inputTokens: n
       content: [],
       stop_reason: null,
       stop_sequence: null,
-      usage: { input_tokens: p.inputTokens, output_tokens: 0 },
+      usage: {
+        input_tokens: p.inputTokens,
+        output_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
     },
   });
 }

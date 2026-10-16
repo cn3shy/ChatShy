@@ -87,6 +87,16 @@ describe('客户端兼容层（集成）', () => {
     expect(body.input_tokens).toBeGreaterThanOrEqual(8); // 你是助手 + 你好世界 = 8 个 CJK 字
   });
 
+  it('Claude Code 遥测路径一律 200（404 会触发客户端重试风暴）', async () => {
+    const s = await boot();
+    const res = await fetch(`${s.base}/api/event_logging/batch`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ events: [] }),
+    });
+    expect(res.status).toBe(200);
+  });
+
   it('连接探测：HEAD/GET /api/hello 与 /v1/api/hello 返回 2xx', async () => {
     const s = await boot();
     for (const path of ['/api/hello', '/v1/api/hello']) {

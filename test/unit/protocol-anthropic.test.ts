@@ -76,7 +76,12 @@ describe('renderMessage（非流式）', () => {
       content: [{ type: 'text', text: '人工回复内容' }],
       stop_reason: 'end_turn',
       stop_sequence: null,
-      usage: { input_tokens: 12, output_tokens: 34 },
+      usage: {
+        input_tokens: 12,
+        output_tokens: 34,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
     });
   });
 });
@@ -115,7 +120,12 @@ describe('buildMessageFrames（流式）', () => {
         content: [],
         stop_reason: null,
         stop_sequence: null,
-        usage: { input_tokens: 12, output_tokens: 0 },
+        usage: {
+          input_tokens: 12,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
       },
     });
     expect(parsed[1]!.data).toEqual({

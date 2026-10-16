@@ -60,6 +60,11 @@ export async function buildServer(ctx: ServerContext, opts: { logger?: boolean }
     app.get(url, async () => ({ ok: true }));
   }
 
+  // Claude Code 遥测路径：返回 404 会触发客户端重试风暴（退避重试 ≤8 次并落盘），一律 200 吞掉
+  for (const method of ['POST', 'PUT'] as const) {
+    app.route({ method, url: '/api/event_logging/*', handler: async () => ({ ok: true }) });
+  }
+
   registerOpenAIRoutes(app, ctx);
   registerAnthropicRoutes(app, ctx);
   registerAdminRoutes(app, ctx);
