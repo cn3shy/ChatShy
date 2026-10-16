@@ -1,0 +1,60 @@
+web/src/style.css
+  s_030b9a1f38bdbf::t_408fcc5b4c37b0 1-702
+web/src/api.ts
+  s_030b9a1f38bdbf::t_b83796fa8171fb 1-59
+web/src/components/Login.vue
+  s_030b9a1f38bdbf::t_b02ab1ddad4206 1-27
+web/src/components/Composer.vue
+  s_030b9a1f38bdbf::t_5182a7a8bf37bd 1-35
+web/vite.config.ts
+  s_030b9a1f38bdbf::t_348dbbae02d7e8 1-17
+web/src/types.ts
+  s_030b9a1f38bdbf::t_d89119429e4c47 1-63
+web/src/components/ChatView.vue
+  s_030b9a1f38bdbf::t_b67f7c056ed3ae 1-108
+web/src/components/SettingsPanel.vue
+  s_030b9a1f38bdbf::t_2ab0a25bbf2ef0 1-85
+web/src/store.ts
+  s_030b9a1f38bdbf::t_03a97da1970367 1-207
+web/tsconfig.json
+  s_030b9a1f38bdbf::t_7ce442441cf521 1-14
+web/src/markdown.ts
+  s_030b9a1f38bdbf::t_e56d3bcc798080 1-14,16-21
+  s_030b9a1f38bdbf::t_51f82e0055c732 15,22-41
+web/package.json
+  s_030b9a1f38bdbf::t_877f559d7bd35c 1-9,20-21
+  s_030b9a1f38bdbf::t_943e2aa56d9b69 10-19
+web/src/notify.ts
+  s_030b9a1f38bdbf::t_38c434a5d47a3e 1-61
+web/src/App.vue
+  s_030b9a1f38bdbf::t_ee4933988b0820 1-46
+src/server/app.ts
+  s_030b9a1f38bdbf::t_c0d8b7e12e7b61 62-75
+  s_030b9a1f38bdbf::t_5f7d87cbfc3ca6 1-2,5
+web/src/components/KeyManager.vue
+  s_030b9a1f38bdbf::t_2f813b18ea44c3 1-148
+web/src/main.ts
+  s_030b9a1f38bdbf::t_4e6162de038bb4 1-8
+web/index.html
+  s_030b9a1f38bdbf::t_1e112edc7db1f6 1-12
+web/src/components/ThreadList.vue
+  s_030b9a1f38bdbf::t_96ee97e4d2143a 1-41
+web/package-lock.json
+  s_030b9a1f38bdbf::t_7d55db0ae96198 1-1511
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8d3cd36b07198f031ac77e90c554b56333681b7b",
+  "prompts": {},
+  "sessions": {
+    "s_030b9a1f38bdbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd57095d-9ade-484e-8daa-16f73cdcb188",
+        "model": "deepseek-flash"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
