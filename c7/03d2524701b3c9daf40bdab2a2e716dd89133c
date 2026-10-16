@@ -1,0 +1,63 @@
+src/core/threads.ts
+  s_030b9a1f38bdbf::t_c8475d37549cf6 174-184
+  s_030b9a1f38bdbf::t_0a8d84f485cff5 43
+  s_030b9a1f38bdbf::t_5511897770fed6 67
+  s_030b9a1f38bdbf::t_0072124e1d2b95 17-18,22,24
+src/protocol/anthropic.ts
+  s_030b9a1f38bdbf::t_f609ed9a40fd44 111-129,151-154
+  s_030b9a1f38bdbf::t_b643d88773ecbf 155
+src/server/serve.ts
+  s_030b9a1f38bdbf::t_f9e3cf0b30d807 1-114
+src/server/routes/anthropic.ts
+  s_030b9a1f38bdbf::t_616a35175f98ac 1-103
+src/server/auth.ts
+  s_030b9a1f38bdbf::t_f571be9eaa7017 1-39
+src/server/app.ts
+  s_030b9a1f38bdbf::t_e4430a7ef46661 28-29,34-44
+  s_030b9a1f38bdbf::t_3c6838763fffbb 1-27,30-33,45-65
+src/server/routes/admin.ts
+  s_030b9a1f38bdbf::t_ac14be8d4ce6c1 1-45,50-273,275-335
+  s_030b9a1f38bdbf::t_ea699f14045f89 46-49
+  s_030b9a1f38bdbf::t_162f13c0536f7c 274
+src/db/migrate.ts
+  s_030b9a1f38bdbf::t_621ef8c295458d 21
+test/integration/openai.test.ts
+  s_030b9a1f38bdbf::t_53513b7ff3f0e7 1-176,191-206
+  s_030b9a1f38bdbf::t_05602035009c77 177-190
+test/integration/streaming.test.ts
+  s_030b9a1f38bdbf::t_6d2373fb947bda 130
+  s_030b9a1f38bdbf::t_1c38f42e180302 172-173,178-179,186
+  s_030b9a1f38bdbf::t_c48397f0691928 1-129,131-171,174-177,180-185,187-191
+test/integration/helpers.ts
+  s_030b9a1f38bdbf::t_db2c3cf5ee7b94 1-87
+src/server/routes/openai.ts
+  s_030b9a1f38bdbf::t_0ac121bed5bc7b 1-122
+src/index.ts
+  s_030b9a1f38bdbf::t_51722954928c1e 2-4,7-8,15-17,19
+src/protocol/openai.ts
+  s_030b9a1f38bdbf::t_20d9355357f143 147-162,174-177
+  s_030b9a1f38bdbf::t_79c6324f0b2906 178
+src/server/session.ts
+  s_030b9a1f38bdbf::t_f2b0df6653eac7 1-61
+test/integration/admin.test.ts
+  s_030b9a1f38bdbf::t_8ac50c00c6c6ad 1-131,133-355
+  s_030b9a1f38bdbf::t_1aefc282b05d61 132
+src/core/jobs.ts
+  s_030b9a1f38bdbf::t_4e5a91373d1b96 169-173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c703d2524701b3c9daf40bdab2a2e716dd89133c",
+  "prompts": {},
+  "sessions": {
+    "s_030b9a1f38bdbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd57095d-9ade-484e-8daa-16f73cdcb188",
+        "model": "deepseek-flash"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
