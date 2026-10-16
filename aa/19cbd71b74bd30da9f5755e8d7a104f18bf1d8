@@ -1,0 +1,48 @@
+src/core/settings.ts
+  s_030b9a1f38bdbf::t_a309730530380d 1-99
+test/unit/migrate.test.ts
+  s_030b9a1f38bdbf::t_1238cb535a8d22 1-44
+tsconfig.json
+  s_030b9a1f38bdbf::t_bd716f4ea01f6b 1-19
+src/index.ts
+  s_030b9a1f38bdbf::t_c9698b6db1fc18 1-40
+package.json
+  s_030b9a1f38bdbf::t_e942bd3f989740 1-17,38-39
+  s_030b9a1f38bdbf::t_4a904bf00ce065 36-37
+  s_030b9a1f38bdbf::t_28d7e2c5e12200 18-33
+  s_030b9a1f38bdbf::t_4c3e8550b23ba5 34-35
+src/db/migrate.ts
+  s_030b9a1f38bdbf::t_7a2ab9430e8b00 1-85
+src/core/keys.ts
+  s_030b9a1f38bdbf::t_930ae7f3b031b6 1-138
+src/db/db.ts
+  s_030b9a1f38bdbf::t_b4de6cffaa076b 1-15
+test/unit/keys.test.ts
+  s_030b9a1f38bdbf::t_29aea40c66aee7 2,13
+  s_030b9a1f38bdbf::t_6ee45ab3830486 1,3-12,14-86
+test/unit/settings.test.ts
+  s_030b9a1f38bdbf::t_ae8edc3b31e226 1,3-12,14-70
+  s_030b9a1f38bdbf::t_b5a906f44d6271 2,13
+src/config.ts
+  s_030b9a1f38bdbf::t_5103ceb67fb85d 1-59
+.env.example
+  s_030b9a1f38bdbf::t_3597c574af8675 1-17
+package-lock.json
+  s_030b9a1f38bdbf::t_c2d8c5b3bac5de 1-3148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aa19cbd71b74bd30da9f5755e8d7a104f18bf1d8",
+  "prompts": {},
+  "sessions": {
+    "s_030b9a1f38bdbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd57095d-9ade-484e-8daa-16f73cdcb188",
+        "model": "deepseek-flash"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
