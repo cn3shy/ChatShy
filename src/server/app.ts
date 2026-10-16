@@ -55,6 +55,11 @@ export async function buildServer(ctx: ServerContext, opts: { logger?: boolean }
 
   app.get('/healthz', async () => ({ ok: true }));
 
+  // 客户端连通性探测（Claude Code 风格的 HEAD/GET /api/hello）；HEAD 由 Fastify 自动挂到 GET 上
+  for (const url of ['/api/hello', '/v1/api/hello']) {
+    app.get(url, async () => ({ ok: true }));
+  }
+
   registerOpenAIRoutes(app, ctx);
   registerAnthropicRoutes(app, ctx);
   registerAdminRoutes(app, ctx);

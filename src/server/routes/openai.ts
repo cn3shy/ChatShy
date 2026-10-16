@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDefaultTimeoutMs, getModelName } from '../../core/settings.js';
 import { appendMessage, linkLatestUserMessageToJob, resolveThread } from '../../core/threads.js';
 import {
@@ -19,7 +19,8 @@ import { checkKeyLimits, getOpenAIKey } from '../auth.js';
 import { serveNonStream, serveStream } from '../serve.js';
 
 export function registerOpenAIRoutes(app: FastifyInstance, ctx: ServerContext): void {
-  app.post('/v1/chat/completions', async (req, reply) => {
+  // 别名：容错 base URL 结尾多带 /v1 的写法（/v1/v1/chat/completions）
+  const chatCompletionsHandler = async (req: FastifyRequest, reply: FastifyReply) => {
     const key = getOpenAIKey(ctx.db, req);
     if (key === null) return reply.code(401).send(openaiErrors.invalidKey());
 
@@ -106,7 +107,11 @@ export function registerOpenAIRoutes(app: FastifyInstance, ctx: ServerContext): 
       },
     });
     return reply;
-  });
+  };
+
+  for (const url of ['/v1/chat/completions', '/v1/v1/chat/completions']) {
+    app.route({ method: 'POST', url, handler: chatCompletionsHandler });
+  }
 
   app.get('/v1/models', async (req, reply) => {
     const key = getOpenAIKey(ctx.db, req);

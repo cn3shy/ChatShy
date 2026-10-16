@@ -9,6 +9,7 @@
 
 - **双协议兼容**：`POST /v1/chat/completions`（OpenAI）与 `POST /v1/messages`（Anthropic），流式/非流式均可；Cherry Studio、ChatBox、LobeChat、官方 SDK、Claude Code 等直接接入
 - **操作台**：SSE 实时推送新请求（≤1 秒）、桌面通知 + 提示音、倒计时、重复请求提示、Markdown 输入与代码高亮渲染、手机浏览器可用
+- **调用方页面（`/chat`）**：填一个 API Key 就能以调用方身份在浏览器里聊天——支持 OpenAI / Anthropic 格式切换、流式显示、中途取消，Key 只存浏览器本地
 - **请求挂起 + 可配置超时**：默认 180 秒，每个 key 可单独覆盖；超时返回各协议标准错误体
 - **会话归并**：无状态协议的多轮请求自动归并成一条会话线；超时后补的回复只存档并标注"未送达"
 - **Key 管理**：生成/吊销/禁用、展示前缀打码、明文仅显示一次、日限额、挂起并发上限
@@ -42,6 +43,10 @@ npm test             # 单元 + 集成测试（75 个）
 - 🔑 管理 API key（明文只在生成时显示一次）；⚙ 改默认超时、模型名、管理员密码、通知开关
 - ＋ 新建测试会话：不经过 API 的直接聊天窗口（可选"模拟调用方"身份发消息）
 
+### 调用方页面（/chat）
+
+把 `https://你的域名/chat` 发给拿到 key 的人（或自己测试用）：填写 `sk-chatshy-…` 即可聊天，可选 OpenAI / Anthropic 格式、开/关流式，请求期间可随时点"停止"。对话历史与 Key 都只存在调用方的浏览器里。
+
 ### 调用方接入
 
 OpenAI 协议（Python SDK 示例）：
@@ -60,9 +65,13 @@ Cherry Studio / ChatBox 等客户端：API 地址填 `https://你的域名/v1`�
 Anthropic 协议（Claude Code 等）：
 
 ```bash
-export ANTHROPIC_BASE_URL="https://你的域名"
-export ANTHROPIC_API_KEY="sk-chatshy-..."
+export ANTHROPIC_BASE_URL="https://你的域名"   # 注意：不要以 /v1 结尾！
+export ANTHROPIC_API_KEY="sk-chatshy-..."      # 或 ANTHROPIC_AUTH_TOKEN，两种都支持
 ```
+
+> - `ANTHROPIC_BASE_URL` **不要**以 `/v1` 结尾（SDK 会自己拼 `/v1/messages`，写成 `…/v1` 会请求成 `/v1/v1/messages`）。ChatShy 已对误带 `/v1` 的写法做了兼容，但正确配法是不带。
+> - 鉴权同时接受 `x-api-key`（ANTHROPIC_API_KEY）与 `Authorization: Bearer`（ANTHROPIC_AUTH_TOKEN）。
+> - Claude Code 会用到的 `POST /v1/messages/count_tokens` 与 `/api/hello` 连通性探测均已实现。
 
 curl 流式：
 
@@ -127,6 +136,7 @@ docker compose start chatshy
 - [ ] 客户端中途取消 → 操作台挂起状态解除
 - [ ] 手机浏览器打开操作台回复一次
 - [ ] 桌面通知与提示音（首次需授权）
+- [ ] `/chat` 页面：填 key 后 OpenAI / Anthropic 两种格式各发一条（流式），中途点"停止"验证取消
 
 ## 隐私说明
 

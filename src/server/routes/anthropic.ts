@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDefaultTimeoutMs, getModelName } from '../../core/settings.js';
 import { appendMessage, linkLatestUserMessageToJob, resolveThread } from '../../core/threads.js';
 import {
@@ -16,8 +16,13 @@ import type { ServerContext } from '../app.js';
 import { checkKeyLimits, getAnthropicKey } from '../auth.js';
 import { serveNonStream, serveStream } from '../serve.js';
 
+/**
+ * 兼容说明：同时挂载 /v1/messages 与 /v1/v1/messages。
+ * 有些客户端把 ANTHROPIC_BASE_URL 配成以 /v1 结尾（OpenAI 习惯），SDK 会再拼
+ * /v1/messages，实际请求成 /v1/v1/messages——挂个别名让两种配法都能用。
+ */
 export function registerAnthropicRoutes(app: FastifyInstance, ctx: ServerContext): void {
-  app.post('/v1/messages', async (req, reply) => {
+  const messagesHandler = async (req: FastifyRequest, reply: FastifyReply) => {
     const key = getAnthropicKey(ctx.db, req);
     if (key === null) return reply.code(401).send(anthropicErrors.invalidKey());
 
@@ -99,5 +104,24 @@ export function registerAnthropicRoutes(app: FastifyInstance, ctx: ServerContext
       },
     });
     return reply;
-  });
+  };
+
+  /** Claude Code 会调用 count_tokens 估算上下文；按字符估算返回即可 */
+  const countTokensHandler = async (req: FastifyRequest, reply: FastifyReply) => {
+    const key = getAnthropicKey(ctx.db, req);
+    if (key === null) return reply.code(401).send(anthropicErrors.invalidKey());
+
+    const parsed = parseAnthropicRequest(req.body);
+    if (!parsed.ok) return reply.code(400).send(anthropicErrors.badRequest(parsed.message));
+
+    const text = [parsed.value.prompt.system ?? '', ...parsed.value.prompt.messages.map((m) => m.content)].join('\n');
+    return { input_tokens: estimateTokens(text) };
+  };
+
+  for (const url of ['/v1/messages', '/v1/v1/messages']) {
+    app.route({ method: 'POST', url, handler: messagesHandler });
+  }
+  for (const url of ['/v1/messages/count_tokens', '/v1/v1/messages/count_tokens']) {
+    app.route({ method: 'POST', url, handler: countTokensHandler });
+  }
 }
