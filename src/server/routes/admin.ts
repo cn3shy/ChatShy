@@ -10,7 +10,7 @@ import {
   setSetting,
   verifyAdminPassword,
 } from '../../core/settings.js';
-import { appendMessage, getThread, listThreadMessages } from '../../core/threads.js';
+import { appendMessage, deleteThread, getThread, listThreadMessages } from '../../core/threads.js';
 import type { ServerContext } from '../app.js';
 import { SESSION_COOKIE } from '../session.js';
 import { SSE_HEADERS } from '../serve.js';
@@ -177,6 +177,24 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: ServerContext): v
       messages,
       pendingJobs: pendingRows.map((j) => ({ id: j.id, protocol: j.protocol, mode: j.mode, deadlineAt: j.deadline_at })),
     };
+  });
+
+  /**
+   * 删除会话（消息与请求记录随外键级联删除，不可恢复）。
+   *
+   * 顺序关键：先收尾挂起请求，再删行。反过来的话，jobs 行会先被级联清掉，
+   * queue.finish 里那句 UPDATE ... WHERE id = ? 就落空了；更要紧的是调用方那头
+   * 还挂在 HTTP 上——它必须收到一个协议错误码才算有始有终。
+   */
+  app.delete('/admin/api/threads/:id', { preHandler: requireAuth }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (getThread(ctx.db, id) === null) return reply.code(404).send({ error: 'not_found' });
+
+    const failed = ctx.queue.failForThread(id);
+    deleteThread(ctx.db, id);
+    // 让其它开着的操作台把这条会话从列表里去掉（前端对任何非 ping 事件都会重拉列表）
+    ctx.hub.broadcast({ type: 'thread.deleted', threadId: id });
+    return { ok: true, failedJobs: failed };
   });
 
   // ---- 回复 / 忽略 ----

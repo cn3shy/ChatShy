@@ -13,6 +13,8 @@ const basicMsg = ref('');
 const pwdMsg = ref('');
 const keyMsg = ref('');
 const keyCopied = ref(false);
+const configMsg = ref('');
+const configCopied = ref(false);
 const busy = ref(false);
 
 const notifyDesktop = ref(desktopEnabled());
@@ -40,6 +42,29 @@ async function copyKey(): Promise<void> {
   keyMsg.value = '';
   keyCopied.value = true;
   setTimeout(() => (keyCopied.value = false), 1500);
+}
+
+/**
+ * 复制给调用方的接入配置：Base URL / API Key / 模型名三行。
+ * 域名取自当前页面地址——管理员是在自己部署的域名下打开操作台的，这个值就是对的。
+ */
+function configText(): string {
+  const key = state.settings?.callerKey ?? '';
+  const model = state.settings?.modelName ?? 'chatshy';
+  return `Base URL: ${window.location.origin}/v1\nAPI Key: ${key}\nModel: ${model}`;
+}
+
+async function copyConfig(): Promise<void> {
+  if ((state.settings?.callerKey ?? '') === '') return;
+  try {
+    await navigator.clipboard.writeText(configText());
+  } catch {
+    configMsg.value = '复制失败，请手动选中上面的 Key 复制';
+    return;
+  }
+  configMsg.value = '';
+  configCopied.value = true;
+  setTimeout(() => (configCopied.value = false), 1500);
 }
 
 async function resetKey(): Promise<void> {
@@ -99,6 +124,13 @@ async function savePassword(): Promise<void> {
         <p class="note muted">
           全项目只有这一个 Key，所有调用方共用。重新生成后旧 Key <b>立即失效</b>。
         </p>
+        <div class="share-row">
+          <button class="ghost-btn small" :disabled="!state.settings?.callerKey" @click="copyConfig">
+            {{ configCopied ? '已复制 ✓' : '复制接入配置' }}
+          </button>
+          <span class="note muted">Base URL + API Key + 模型名三行，直接发给调用方</span>
+        </div>
+        <p v-if="configMsg" class="note">{{ configMsg }}</p>
         <p v-if="keyMsg" class="note">{{ keyMsg }}</p>
 
         <h3>提醒</h3>

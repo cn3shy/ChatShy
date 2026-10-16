@@ -22,7 +22,6 @@ async function submit(): Promise<void> {
       <input v-model="password" type="password" placeholder="管理员密码" autofocus autocomplete="current-password" />
       <p v-if="state.loginError" class="err">{{ state.loginError }}</p>
       <button type="submit" :disabled="submitting || password === ''">进入</button>
-      <a class="chat-link" href="/chat">有 API Key？去调用方页面 →</a>
     </form>
   </div>
 </template>

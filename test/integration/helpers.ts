@@ -36,7 +36,38 @@ export interface TestServer {
   close(): Promise<void>;
 }
 
-export async function startTestServer(): Promise<TestServer> {
+/**
+ * WHATWG 规范里的 "bad port" 名单：Node 内置的 fetch（undici）会直接拒绝连接这些端口，
+ * 报 `Error: bad port`，连接根本发不出去。
+ *
+ * 为什么测试要管这个：绑定 0 号端口时由系统挑端口，而本机 Windows 的动态端口范围是
+ * 1024–15000，**把 10080 也圈了进去**。系统一旦恰巧把这个端口分给测试服务，该用例里
+ * 所有 fetch 都会失败——表现为随机一两个用例变红，且看不出与被测代码有任何关系。
+ * 这不是被测代码的问题，换一个端口重来即可。
+ */
+const FETCH_BLOCKED_PORTS = new Set([
+  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102,
+  103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465,
+  512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993,
+  995, 1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668,
+  6669, 6679, 6697, 10080,
+]);
+
+export function startTestServer(): Promise<TestServer> {
+  return startTestServerOnSafePort(0);
+}
+
+async function startTestServerOnSafePort(attempt: number): Promise<TestServer> {
+  const server = await bootTestServer();
+  const port = Number(new URL(server.base).port);
+  if (!FETCH_BLOCKED_PORTS.has(port)) return server;
+  // close() 会连同临时目录一起清掉，所以这里直接整个重来
+  await server.close();
+  if (attempt >= 5) throw new Error(`反复拿到 fetch 拒绝的端口（最后一次是 ${port}）`);
+  return startTestServerOnSafePort(attempt + 1);
+}
+
+async function bootTestServer(): Promise<TestServer> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chatshy-test-'));
   const db = openDb(path.join(dir, 'test.db'));
   migrate(db);
@@ -48,7 +79,12 @@ export async function startTestServer(): Promise<TestServer> {
   const queue = new JobQueue(db, (evt) => hub.broadcast(evt));
   const sessions = new SessionStore();
 
-  const app = await buildServer({ db, queue, hub, sessions, ssePingMs: 80, hubPingMs: 150 }, { logger: false });
+  // typewriterTickMs=1：正文仍然逐帧下发（覆盖打字机路径），但不按真实节拍等待，
+  // 否则每个流式用例都要多等好几秒
+  const app = await buildServer(
+    { db, queue, hub, sessions, ssePingMs: 80, hubPingMs: 150, typewriterTickMs: 1 },
+    { logger: false },
+  );
   await app.listen({ port: 0, host: '127.0.0.1' });
   const { port } = app.server.address() as AddressInfo;
   const base = `http://127.0.0.1:${port}`;

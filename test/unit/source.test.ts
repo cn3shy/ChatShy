@@ -1,9 +1,11 @@
 import type { FastifyRequest } from 'fastify';
 import { describe, expect, it } from 'vitest';
-import { detectClient, fingerprintOf, normalizeIp, requestSource } from '../../src/core/source.js';
+import { detectClient, fingerprintOf, normalizeIp, parseCaller, requestSource } from '../../src/core/source.js';
 
-function fakeReq(ip: string, ua?: string): FastifyRequest {
-  return { ip, headers: ua === undefined ? {} : { 'user-agent': ua } } as unknown as FastifyRequest;
+function fakeReq(ip: string, ua?: string, extra: Record<string, string> = {}): FastifyRequest {
+  const headers: Record<string, string> = { ...extra };
+  if (ua !== undefined) headers['user-agent'] = ua;
+  return { ip, headers } as unknown as FastifyRequest;
 }
 
 describe('detectClient', () => {
@@ -77,11 +79,48 @@ describe('fingerprintOf（会话归并的身份标识）', () => {
   });
 });
 
+describe('parseCaller（调用方自报的名字）', () => {
+  it('清洗控制字符与多余空白（换行会撑坏会话列表的展示位）', () => {
+    expect(parseCaller('  张 \n 三 \r\n')).toBe('张 三');
+  });
+
+  it('超长按码点截断，不劈开 emoji', () => {
+    expect(parseCaller('x'.repeat(100))).toHaveLength(40);
+    expect(parseCaller('🙂'.repeat(60))).toBe('🙂'.repeat(40));
+  });
+
+  it('缺失与空白都不算身份', () => {
+    expect(parseCaller(null)).toBe('');
+    expect(parseCaller('   ')).toBe('');
+  });
+
+  it('中文名：百分号编码与原始 UTF-8 字节都还原成同一个名字', () => {
+    // Node/浏览器系客户端只能发 ASCII，中文得自己编码
+    expect(parseCaller('%E5%BC%A0%E4%B8%89')).toBe('张三');
+    // curl / Python / Go 直接发 UTF-8 字节，Node 按 latin-1 解出来是乱码，得再解一次
+    expect(parseCaller(Buffer.from('张三', 'utf8').toString('latin1'))).toBe('张三');
+  });
+
+  it('名字里真带 % 时不误当编码', () => {
+    expect(parseCaller('50%')).toBe('50%');
+  });
+
+  it('两种编码方式落到同一个身份指纹上', () => {
+    const percent = requestSource(fakeReq('127.0.0.1', 'curl/8.4.0', { 'x-chatshy-caller': '%E5%BC%A0%E4%B8%89' }));
+    const rawBytes = requestSource(
+      fakeReq('203.0.113.7', 'curl/8.4.0', { 'x-chatshy-caller': Buffer.from('张三', 'utf8').toString('latin1') }),
+    );
+    expect(percent.client).toBe('张三');
+    expect(percent.fingerprint).toBe(rawBytes.fingerprint);
+  });
+});
+
 describe('requestSource', () => {
   it('组装出完整的来源信息', () => {
     const src = requestSource(fakeReq('::ffff:192.168.1.9', 'CherryStudio/1.6.0'));
     expect(src.ip).toBe('192.168.1.9');
     expect(src.ua).toBe('CherryStudio/1.6.0');
+    expect(src.caller).toBe('');
     expect(src.client).toBe('Cherry Studio');
     expect(src.fingerprint).toBe(fingerprintOf('192.168.1.9', 'CherryStudio/1.6.0', 'Cherry Studio'));
   });
@@ -91,5 +130,54 @@ describe('requestSource', () => {
     expect(src.ua).toBe('');
     expect(src.client).toBe('未知来源');
     expect(src.fingerprint).toHaveLength(32);
+  });
+
+  it('带了身份头就用这个名字当展示名', () => {
+    const src = requestSource(fakeReq('127.0.0.1', 'CherryStudio/1.6.0', { 'x-chatshy-caller': '张三' }));
+    expect(src.client).toBe('张三');
+    expect(src.caller).toBe('张三');
+    expect(src.ua).toBe('CherryStudio/1.6.0'); // 原始 UA 仍留着，详情页可查
+  });
+
+  it('身份头与 IP 指纹结构互斥，不会撞到同一条会话上', () => {
+    const byName = requestSource(fakeReq('203.0.113.7', 'curl/8.4.0', { 'x-chatshy-caller': '张三' }));
+    const byIp = requestSource(fakeReq('203.0.113.7', 'curl/8.4.0'));
+    expect(byName.fingerprint).not.toBe(byIp.fingerprint);
+  });
+});
+
+describe('身份指纹：换网络不切段', () => {
+  it('同名的人换 IP、换客户端版本，仍是同一条会话', () => {
+    const a = requestSource(fakeReq('127.0.0.1', 'CherryStudio/1.6.0', { 'x-chatshy-caller': '张三' }));
+    const b = requestSource(fakeReq('203.0.113.7', 'CherryStudio/1.9.3', { 'x-chatshy-caller': '张三' }));
+    expect(a.fingerprint).toBe(b.fingerprint);
+  });
+
+  it('名字不同就是两个人', () => {
+    const a = requestSource(fakeReq('127.0.0.1', 'curl/8.4.0', { 'x-chatshy-caller': '张三' }));
+    const b = requestSource(fakeReq('127.0.0.1', 'curl/8.4.0', { 'x-chatshy-caller': '李四' }));
+    expect(a.fingerprint).not.toBe(b.fingerprint);
+  });
+});
+
+describe('clientIpOf（反代下的真实 IP）', () => {
+  it('对端是本机、且只配了 X-Real-IP 时采信它', () => {
+    const src = requestSource(fakeReq('127.0.0.1', 'curl/8.4.0', { 'x-real-ip': '203.0.113.9' }));
+    expect(src.ip).toBe('203.0.113.9');
+  });
+
+  it('对端是同内网的反代（如 Docker 网关）时同样采信', () => {
+    const src = requestSource(fakeReq('172.18.0.3', 'curl/8.4.0', { 'x-real-ip': '203.0.113.9' }));
+    expect(src.ip).toBe('203.0.113.9');
+  });
+
+  it('对端是公网时忽略 X-Real-IP，挡住直连伪造', () => {
+    const src = requestSource(fakeReq('198.51.100.4', 'curl/8.4.0', { 'x-real-ip': '10.0.0.1' }));
+    expect(src.ip).toBe('198.51.100.4');
+  });
+
+  it('req.ip 已是真实公网 IP（trustProxy 读到了 XFF）时不再动它', () => {
+    const src = requestSource(fakeReq('203.0.113.9', 'curl/8.4.0', { 'x-real-ip': '127.0.0.1' }));
+    expect(src.ip).toBe('203.0.113.9');
   });
 });

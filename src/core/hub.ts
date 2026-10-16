@@ -5,6 +5,12 @@ export interface HubClient {
 }
 
 /**
+ * 广播到操作台的事件。JobEvent 是主体；thread.deleted 不属于 Job 的生命周期，
+ * 但同样需要让其它开着的操作台把那条会话从列表里去掉。
+ */
+export type HubEvent = JobEvent | { type: 'thread.deleted'; threadId: string };
+
+/**
  * 操作台实时通道（设计 §5.4）：向所有在线管理端 SSE 连接广播事件。
  * 事件负载刻意保持最小（jobId/threadId/deadlineAt），前端收到后重新拉取数据。
  */
@@ -23,7 +29,7 @@ export class OperatorHub {
     return this.clients.size;
   }
 
-  broadcast(evt: JobEvent): void {
+  broadcast(evt: HubEvent): void {
     this.writeAll(`data: ${JSON.stringify(evt)}\n\n`);
   }
 

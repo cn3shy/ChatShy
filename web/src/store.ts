@@ -103,6 +103,16 @@ export async function refreshDetail(): Promise<void> {
   }
 }
 
+/** 删除会话（不可恢复）。删掉的正是当前选中会话时，顺手把右侧清空。 */
+export async function deleteThread(id: string): Promise<void> {
+  await api.deleteThread(id);
+  if (state.selectedId === id) {
+    state.selectedId = null;
+    state.detail = null;
+  }
+  await refreshThreads();
+}
+
 /** 回复当前会话最新的挂起请求 */
 export async function reply(content: string): Promise<{ delivered: boolean } | null> {
   const job = state.detail?.pendingJobs.at(-1);

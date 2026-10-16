@@ -1,4 +1,4 @@
 # 把下面域名换成你自己的；Caddy 会自动申请并续期 HTTPS 证书（需 DNS 已解析到本机）
 chatshy.example.com {
-	reverse_proxy chatshy:8787
+	reverse_proxy chatshy:8088
 }

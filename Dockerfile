@@ -26,5 +26,5 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY --from=server-build /build/dist ./dist
 COPY --from=web-build /build/web/dist ./web/dist
-EXPOSE 8787
+EXPOSE 8088
 CMD ["node", "dist/index.js"]

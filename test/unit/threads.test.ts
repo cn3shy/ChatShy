@@ -15,6 +15,7 @@ beforeEach(() => {
 const src = (fingerprint: string, over: Partial<RequestSource> = {}): RequestSource => ({
   ip: '127.0.0.1',
   ua: 'test/1.0',
+  caller: '',
   client: '测试客户端',
   fingerprint,
   ...over,

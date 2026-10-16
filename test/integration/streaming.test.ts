@@ -60,16 +60,22 @@ describe('流式 SSE（集成）', () => {
     s.queue.reply(s.queue.listPending()[0]!.id, '流式人工回复');
 
     const text = await done;
-    expect(text).toContain('"delta":{"content":"流式人工回复"}');
+    // 打字机：正文被拆成多帧，拼起来才是完整回复
+    const deltas = [...text.matchAll(/"delta":\{"content":"([^"]*)"\}/g)].map((m) => m[1]!);
+    expect(deltas.length).toBeGreaterThan(1);
+    expect(deltas.join('')).toBe('流式人工回复');
+
     expect(text).toContain('"finish_reason":"stop"');
     expect(text).toContain('"usage"');
     expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true);
 
     const idxRole = text.indexOf('"role":"assistant"');
-    const idxContent = text.indexOf('"content":"流式人工回复"');
+    const idxFirstDelta = text.indexOf('"content":"流式');
     const idxDone = text.indexOf('data: [DONE]');
-    expect(idxRole).toBeLessThan(idxContent);
-    expect(idxContent).toBeLessThan(idxDone);
+    expect(idxRole).toBeLessThan(idxFirstDelta);
+    expect(idxFirstDelta).toBeLessThan(idxDone);
+    // 收尾帧必须排在所有正文帧之后
+    expect(text.lastIndexOf('"content":"')).toBeLessThan(text.indexOf('"finish_reason":"stop"'));
   });
 
   it('OpenAI 官方 SDK 流式消费', async () => {
@@ -119,14 +125,18 @@ describe('流式 SSE（集成）', () => {
     expect(final.content[0]).toMatchObject({ type: 'text', text: 'Anthropic 流式回复' });
     expect(final.stop_reason).toBe('end_turn');
 
-    expect(collected.filter((t) => t !== 'ping')).toEqual([
+    const events = collected.filter((t) => t !== 'ping');
+    // 打字机会把正文拆成多个 content_block_delta；其余事件各一次、顺序不变
+    expect(events.filter((t) => t !== 'content_block_delta')).toEqual([
       'message_start',
       'content_block_start',
-      'content_block_delta',
       'content_block_stop',
       'message_delta',
       'message_stop',
     ]);
+    expect(events.filter((t) => t === 'content_block_delta').length).toBeGreaterThan(1);
+    expect(events[0]).toBe('message_start');
+    expect(events.at(-1)).toBe('message_stop');
     // 注：wire 上的 ping 事件由 SDK 内部消化（不进入迭代器），校验见原始 fetch 流测试
   });
 

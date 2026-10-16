@@ -8,6 +8,7 @@ import { JobQueue, type JobEvent } from '../../src/core/jobs.js';
 const SOURCE: RequestSource = {
   ip: '127.0.0.1',
   ua: 'test/1.0',
+  caller: '',
   client: '测试客户端',
   fingerprint: 'fp-1',
 };
@@ -130,5 +131,25 @@ describe('JobQueue', () => {
     queue.reply(a.id, 'done');
     expect(await a.wait()).toEqual({ kind: 'replied', content: 'done' });
     expect(queue.listPending()).toHaveLength(1);
+  });
+
+  it('failForThread：只收尾本会话的挂起请求，对调用方按超时兑现', async () => {
+    const { db, threadId, queue } = setup();
+    const thread2 = resolveThread(db, {
+      source: SOURCE,
+      protocol: 'openai',
+      model: 'm',
+      messages: [{ role: 'user', content: '另一个会话' }],
+    }).thread.id;
+
+    const a = queue.create({ threadId, protocol: 'openai', mode: 'non_stream', requestJson: '{}', timeoutMs: 60_000 });
+    const b = queue.create({ threadId: thread2, protocol: 'openai', mode: 'non_stream', requestJson: '{}', timeoutMs: 60_000 });
+
+    expect(queue.failForThread(threadId)).toBe(1);
+    expect(await a.wait()).toEqual({ kind: 'timeout' });
+    expect(jobRow(db, a.id).status).toBe('timeout');
+    // 别的会话不受牵连
+    expect(queue.get(b.id)?.status).toBe('pending');
+    expect(queue.failForThread(threadId)).toBe(0); // 幂等：没有挂起的就没什么可收
   });
 });

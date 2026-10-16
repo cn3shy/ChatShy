@@ -145,6 +145,23 @@ export class JobQueue {
     return true;
   }
 
+  /**
+   * 收尾某会话下所有挂起请求，对调用方按**超时**兑现：会话都要删了，回复永远不会来，
+   * 不能让调用方继续挂在 HTTP 上等（非流式会一直占着连接，流式会一直心跳）。
+   * 返回被收尾的条数。
+   */
+  failForThread(threadId: string): number {
+    let n = 0;
+    // 遍历副本：finish() 会从 jobs 里删元素
+    for (const job of [...this.jobs.values()]) {
+      if (job.threadId === threadId && job.status === 'pending') {
+        this.finish(job, { kind: 'timeout' });
+        n++;
+      }
+    }
+    return n;
+  }
+
   countPendingForThread(threadId: string): number {
     let n = 0;
     for (const job of this.jobs.values()) {

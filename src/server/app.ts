@@ -6,6 +6,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { OperatorHub } from '../core/hub.js';
 import type { JobQueue } from '../core/jobs.js';
+import { CALLER_HEADER } from '../core/source.js';
 import type { Db } from '../db/db.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerAnthropicRoutes } from './routes/anthropic.js';
@@ -21,6 +22,11 @@ export interface ServerContext {
   ssePingMs?: number;
   /** 管理端 SSE ping 间隔（毫秒），默认 20 秒 */
   hubPingMs?: number;
+  /**
+   * 流式回复的打字机节拍（毫秒），默认 25。0 = 仍逐帧下发但不等待间隔。
+   * 这是**内部件**，不是设置页里的调用方配置项；测试把它调成 0/1 以免每个用例都多等几秒。
+   */
+  typewriterTickMs?: number;
 }
 
 export async function buildServer(ctx: ServerContext, opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
@@ -48,8 +54,9 @@ export async function buildServer(ctx: ServerContext, opts: { logger?: boolean }
 
   await app.register(cors, {
     origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'anthropic-version'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    // x-chatshy-caller 是调用方自报身份的头（见 core/source.ts），浏览器里的调用方要能带上它
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'anthropic-version', CALLER_HEADER],
   });
   await app.register(cookie);
 

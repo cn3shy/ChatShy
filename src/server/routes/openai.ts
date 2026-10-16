@@ -4,7 +4,8 @@ import { requestSource } from '../../core/source.js';
 import { appendMessage, linkLatestUserMessageToJob, resolveThread } from '../../core/threads.js';
 import {
   SSE_PING_COMMENT,
-  completionContentFrames,
+  completionDeltaFrame,
+  completionFinishFrames,
   completionRoleFrame,
   newCompletionId,
   openaiErrors,
@@ -60,16 +61,19 @@ export function registerOpenAIRoutes(app: FastifyInstance, ctx: ServerContext): 
         queue: ctx.queue,
         job,
         onDelivered,
+        typewriterTickMs: ctx.typewriterTickMs,
         renderer: {
           initial: completionRoleFrame({ id, created, model }),
-          content: (content) =>
-            completionContentFrames({
+          open: '',
+          delta: (text) => completionDeltaFrame({ id, created, model }, text),
+          finish: (fullText) =>
+            completionFinishFrames({
               id,
               created,
               model,
-              content,
+              content: fullText,
               promptTokens,
-              completionTokens: estimateTokens(content),
+              completionTokens: estimateTokens(fullText),
               includeUsage: parsed.value.includeUsage,
             }),
           ping: SSE_PING_COMMENT,

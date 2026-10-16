@@ -38,6 +38,9 @@ export const api = {
 
   threads: () => req<{ threads: ThreadSummary[] }>('/admin/api/threads'),
   thread: (id: string) => req<ThreadDetail>(`/admin/api/threads/${id}`),
+  /** 删除会话；该会话下挂起的请求会按超时收尾，调用方收到协议错误码 */
+  deleteThread: (id: string) =>
+    req<{ ok: boolean; failedJobs: number }>(`/admin/api/threads/${id}`, { method: 'DELETE' }),
 
   reply: (jobId: string, content: string) =>
     req<{ ok: boolean; delivered: boolean }>(`/admin/api/jobs/${jobId}/reply`, { method: 'POST', body: { content } }),

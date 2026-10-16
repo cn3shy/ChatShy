@@ -210,6 +210,32 @@ code {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  cursor: pointer;
+}
+
+/* 删除按钮：平时隐去但占位（避免 hover 时行内元素跳动），悬停或键盘聚焦时才可用 */
+.thread-item .thread-del {
+  flex-shrink: 0;
+  padding: 0 5px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.thread-item:hover .thread-del,
+.thread-item .thread-del:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.thread-item .thread-del:hover {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .thread-item:hover {
@@ -664,17 +690,13 @@ code {
   border-color: var(--danger);
 }
 
-/* 登录页底部的「调用方页面」入口链接 */
-.chat-link {
-  color: var(--muted);
-  font-size: 0.82rem;
-  text-align: center;
-  text-decoration: none;
-  margin-top: 4px;
-}
-
-.chat-link:hover {
-  color: var(--accent-2);
+/* 设置页「复制接入配置」那一行 */
+.share-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
 }
 
 /* 全局调用方 Key 的展示行（设置页） */

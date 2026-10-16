@@ -158,17 +158,36 @@ export function completionRoleFrame(p: { id: string; created: number; model: str
   });
 }
 
-/** 回复就绪后发送的帧：内容 delta、finish、（可选）usage、[DONE] */
-export function completionContentFrames(p: CompletionParams): string[] {
-  const frames = [
-    sseFrame(chunk(p, [{ index: 0, delta: { content: p.content }, finish_reason: null }])),
-    sseFrame(chunk(p, [{ index: 0, delta: {}, finish_reason: 'stop' }])),
-  ];
+/**
+ * 正文的一段。打字机会把它拆成多帧发，整段一次送达时只发一帧。
+ * 只用到 id/created/model，所以签名收窄——逐帧调用时不必凑齐 token 之类的参数。
+ */
+export function completionDeltaFrame(
+  p: { id: string; created: number; model: string },
+  text: string,
+): string {
+  return sseFrame({
+    id: p.id,
+    object: 'chat.completion.chunk',
+    created: p.created,
+    model: p.model,
+    choices: [{ index: 0, delta: { content: text }, finish_reason: null }],
+  });
+}
+
+/** 正文发完后的收尾帧：finish_reason、（可选）usage、[DONE] */
+export function completionFinishFrames(p: CompletionParams): string[] {
+  const frames = [sseFrame(chunk(p, [{ index: 0, delta: {}, finish_reason: 'stop' }]))];
   if (p.includeUsage) {
     frames.push(sseFrame({ ...chunk(p, []), usage: usageOf(p) }));
   }
   frames.push(SSE_DONE);
   return frames;
+}
+
+/** 回复就绪后发送的帧：内容 delta、finish、（可选）usage、[DONE]（整段一次送达） */
+export function completionContentFrames(p: CompletionParams): string[] {
+  return [completionDeltaFrame(p, p.content), ...completionFinishFrames(p)];
 }
 
 /** 完整流式事件序列（整段内容一次送达），不含心跳；server 层负责穿插 ping */

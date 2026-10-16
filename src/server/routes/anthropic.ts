@@ -6,7 +6,9 @@ import {
   anthropicErrors,
   anthropicPingFrame,
   eventFrame,
-  messageContentFrames,
+  messageDeltaFrame,
+  messageFinishFrames,
+  messageOpenBlockFrame,
   messageStartFrame,
   newMessageId,
   parseAnthropicRequest,
@@ -61,15 +63,18 @@ export function registerAnthropicRoutes(app: FastifyInstance, ctx: ServerContext
         queue: ctx.queue,
         job,
         onDelivered,
+        typewriterTickMs: ctx.typewriterTickMs,
         renderer: {
           initial: messageStartFrame({ id, model, inputTokens: promptTokens }),
-          content: (content) =>
-            messageContentFrames({
+          open: messageOpenBlockFrame(),
+          delta: (text) => messageDeltaFrame(text),
+          finish: (fullText) =>
+            messageFinishFrames({
               id,
               model,
-              content,
+              content: fullText,
               inputTokens: promptTokens,
-              outputTokens: estimateTokens(content),
+              outputTokens: estimateTokens(fullText),
             }),
           ping: anthropicPingFrame(),
           error: eventFrame('error', anthropicErrors.timeout()),

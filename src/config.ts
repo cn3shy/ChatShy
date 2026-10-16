@@ -51,7 +51,7 @@ function strEnv(name: string): string | null {
 }
 
 export const config: Config = {
-  port: intEnv('PORT', 8787),
+  port: intEnv('PORT', 8088),
   dbPath: strEnv('DB_PATH')
     ? path.resolve(process.cwd(), strEnv('DB_PATH')!)
     : path.resolve(process.cwd(), 'data', 'chatshy.db'),

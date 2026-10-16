@@ -175,6 +175,90 @@ describe('管理端 API（集成）', () => {
     expect(res.status).toBe(504);
   });
 
+  it('删除会话：挂起请求按超时收尾，消息与请求记录一并消失', async () => {
+    const s = await boot();
+    const cookie = await login(s);
+
+    const pendingReq = fetch(`${s.base}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${s.key}` },
+      body: JSON.stringify({ messages: [{ role: 'user', content: '待删除的会话' }] }),
+    });
+    await waitFor(() => s.queue.listPending().length === 1);
+    const threadId = s.queue.listPending()[0]!.threadId;
+    expect(listThreadMessages(s.db, threadId)).toHaveLength(1);
+
+    const del = await fetchJson<{ ok: boolean; failedJobs: number }>(`${s.base}/admin/api/threads/${threadId}`, {
+      method: 'DELETE',
+      headers: { cookie },
+    });
+    expect(del.status).toBe(200);
+    expect(del.body.failedJobs).toBe(1);
+
+    // 关键：调用了方不能永远挂在 HTTP 上等一个不会来的回复，得拿到协议错误码
+    const res = await pendingReq;
+    expect(res.status).toBe(504);
+    expect(s.queue.listPending()).toHaveLength(0);
+
+    // 消息与请求记录随外键级联删除
+    expect(listThreadMessages(s.db, threadId)).toHaveLength(0);
+    expect(s.db.prepare('SELECT id FROM jobs WHERE thread_id = ?').all(threadId)).toHaveLength(0);
+
+    const detail = await fetchJson<{ error: string }>(`${s.base}/admin/api/threads/${threadId}`, { headers: { cookie } });
+    expect(detail.status).toBe(404);
+    const list = await fetchJson<{ threads: Array<{ id: string }> }>(`${s.base}/admin/api/threads`, { headers: { cookie } });
+    expect(list.body.threads.find((t) => t.id === threadId)).toBeUndefined();
+  });
+
+  /**
+   * 回归用户实测场景：服务挂在 Nginx 后面、所有请求的 IP 都是 127.0.0.1，
+   * 两个都用 Cherry Studio 的人会被算成同一个来源而串到一条会话里。
+   * 带上自报身份头之后，来源按名字区分。
+   */
+  it('来源身份头：同一 IP、同一客户端的两个人不串线', async () => {
+    const s = await boot();
+    const cookie = await login(s);
+
+    // 头值只能是 latin-1 字节，中文名按百分号编码发（这是 Node/浏览器系客户端唯一可行的写法）
+    const ask = (caller: string): Promise<Response> =>
+      fetch(`${s.base}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${s.key}`,
+          'user-agent': 'CherryStudio/1.0.0',
+          'x-chatshy-caller': encodeURIComponent(caller),
+        },
+        body: JSON.stringify({ messages: [{ role: 'user', content: '你好' }] }),
+      });
+
+    const zhang = ask('张三');
+    await waitFor(() => s.queue.listPending().length === 1);
+    // 若指纹没有按名字区分，第二条会"取代"掉第一条，挂起数就永远到不了 2
+    const li = ask('李四');
+    await waitFor(() => s.queue.listPending().length === 2);
+
+    const list = await fetchJson<{
+      threads: Array<{ id: string; sourceClient: string; sourceIp: string }>;
+    }>(`${s.base}/admin/api/threads`, { headers: { cookie } });
+    const byName = (name: string): { id: string; sourceIp: string } | undefined =>
+      list.body.threads.find((t) => t.sourceClient === name);
+
+    expect(byName('张三')?.sourceIp).toBe('127.0.0.1'); // 反代下 IP 确实分不开人
+    expect(byName('李四')?.sourceIp).toBe('127.0.0.1');
+    expect(byName('张三')?.id).not.toBe(byName('李四')?.id);
+
+    for (const job of [...s.queue.listPending()]) s.queue.ignore(job.id);
+    await Promise.all([zhang, li]);
+  });
+
+  it('删除不存在的会话 → 404', async () => {
+    const s = await boot();
+    const cookie = await login(s);
+    const res = await fetch(`${s.base}/admin/api/threads/no-such-thread`, { method: 'DELETE', headers: { cookie } });
+    expect(res.status).toBe(404);
+  });
+
   it('超时后补回复：delivered=false，以 console 源落库不污染 API 匹配', async () => {
     const s = await boot();
     const cookie = await login(s);

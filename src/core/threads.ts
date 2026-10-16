@@ -198,6 +198,17 @@ export function resolveThread(db: Db, params: ResolveParams): { thread: ThreadRe
   return { thread: threadToRecord(threadRow), appended: appendedRows.map(messageToRecord) };
 }
 
+/**
+ * 删除会话，连带消息与请求记录（靠外键 ON DELETE CASCADE，见 db.ts 的 foreign_keys=ON）。
+ *
+ * 调用方必须先拿 JobQueue.failForThread 收尾挂起请求：外键管不到内存里的 Job，
+ * 而且那条 HTTP 连接还在等回复——先删行再收尾，reply 落库时线程已经没了。
+ * 返回是否真的删掉了一行（false = 本来就不存在）。
+ */
+export function deleteThread(db: Db, id: string): boolean {
+  return db.prepare('DELETE FROM threads WHERE id = ?').run(id).changes > 0;
+}
+
 export function getThread(db: Db, id: string): ThreadRecord | null {
   const row = db.prepare('SELECT * FROM threads WHERE id = ?').get(id) as ThreadRow | undefined;
   return row === undefined ? null : threadToRecord(row);

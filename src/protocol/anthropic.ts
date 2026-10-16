@@ -147,19 +147,27 @@ export function messageStartFrame(p: { id: string; model: string; inputTokens: n
   });
 }
 
-/** 回复就绪后发送的事件：content_block_* → message_delta → message_stop */
-export function messageContentFrames(p: MessageParams): string[] {
+/** 正文块开始（打字机要在发正文前先开块） */
+export function messageOpenBlockFrame(): string {
+  return eventFrame('content_block_start', {
+    type: 'content_block_start',
+    index: 0,
+    content_block: { type: 'text', text: '' },
+  });
+}
+
+/** 正文的一段。打字机会把它拆成多个事件，整段一次送达时只发一个。 */
+export function messageDeltaFrame(text: string): string {
+  return eventFrame('content_block_delta', {
+    type: 'content_block_delta',
+    index: 0,
+    delta: { type: 'text_delta', text },
+  });
+}
+
+/** 正文发完后的收尾事件：content_block_stop → message_delta → message_stop */
+export function messageFinishFrames(p: MessageParams): string[] {
   return [
-    eventFrame('content_block_start', {
-      type: 'content_block_start',
-      index: 0,
-      content_block: { type: 'text', text: '' },
-    }),
-    eventFrame('content_block_delta', {
-      type: 'content_block_delta',
-      index: 0,
-      delta: { type: 'text_delta', text: p.content },
-    }),
     eventFrame('content_block_stop', { type: 'content_block_stop', index: 0 }),
     eventFrame('message_delta', {
       type: 'message_delta',
@@ -168,6 +176,11 @@ export function messageContentFrames(p: MessageParams): string[] {
     }),
     eventFrame('message_stop', { type: 'message_stop' }),
   ];
+}
+
+/** 回复就绪后发送的事件：content_block_* → message_delta → message_stop（整段一次送达） */
+export function messageContentFrames(p: MessageParams): string[] {
+  return [messageOpenBlockFrame(), messageDeltaFrame(p.content), ...messageFinishFrames(p)];
 }
 
 /** 完整流式事件序列（设计 §4.3），不含心跳；server 层负责穿插 ping */
