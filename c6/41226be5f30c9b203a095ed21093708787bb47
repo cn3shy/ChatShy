@@ -1,0 +1,31 @@
+docker/Caddyfile
+  s_030b9a1f38bdbf::t_debdde60efb82c 1-4
+docker/nginx.conf.example
+  s_030b9a1f38bdbf::t_f0aea0dcec6fdf 1-28
+Dockerfile
+  s_030b9a1f38bdbf::t_084502667ff97c 1-30
+README.md
+  s_030b9a1f38bdbf::t_55cec2aa9f2dbb 1-146
+docs/superpowers/plans/2026-10-16-chatshy-implementation.md
+  s_030b9a1f38bdbf::t_67fd80902d771c 164-173
+docker-compose.yml
+  s_030b9a1f38bdbf::t_b7d0c88377518e 1-41
+.dockerignore
+  s_030b9a1f38bdbf::t_3c6e173a663687 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c641226be5f30c9b203a095ed21093708787bb47",
+  "prompts": {},
+  "sessions": {
+    "s_030b9a1f38bdbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd57095d-9ade-484e-8daa-16f73cdcb188",
+        "model": "deepseek-flash"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
