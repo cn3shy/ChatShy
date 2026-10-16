@@ -193,8 +193,9 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: ServerContext): v
     if (row === undefined) return reply.code(404).send({ error: 'not_found' });
 
     if (ctx.queue.reply(id, content)) {
-      // 正常送达：属于 API 转录本
-      appendMessage(ctx.db, { threadId: row.thread_id, role: 'assistant', content, source: 'api', jobId: id });
+      // 正常送达：这里**不**落库。queue.reply() 会唤醒正在等待的 serveNonStream/serveStream，
+      // 由它们的 onDelivered 回调统一写入——那才是"回复确实发给了调用方"的判定点。
+      // 两边都写会让同一条回复入库两遍，界面上看着就是一条消息变成两行。
       return { ok: true, delivered: true };
     }
     if (row.status === 'replied') return reply.code(409).send({ error: 'already_replied' });

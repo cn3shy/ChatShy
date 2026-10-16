@@ -121,6 +121,37 @@ describe('管理端 API（集成）', () => {
     expect(thread2.lastMessage).toBe('管理端人工回复');
   });
 
+  /**
+   * 回归：操作员回复曾经会落库两遍——admin 路由自己 appendMessage 一次，
+   * queue.reply() 唤醒的 serve* 又通过 onDelivered 回调 appendMessage 一次。
+   * 结果是会话里同一条回复出现两条，界面看着像"一条消息发出去变成两行"。
+   */
+  it('操作员回复只落库一次', async () => {
+    const s = await boot();
+    const cookie = await login(s);
+
+    const pendingReq = fetch(`${s.base}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${s.key}` },
+      body: JSON.stringify({ messages: [{ role: 'user', content: '只应回复一次' }] }),
+    });
+    await waitFor(() => s.queue.listPending().length === 1);
+    const job = s.queue.listPending()[0]!;
+
+    const reply = await fetchJson<{ ok: boolean; delivered: boolean }>(
+      `${s.base}/admin/api/jobs/${job.id}/reply`,
+      { method: 'POST', headers: jsonHeaders(cookie), body: JSON.stringify({ content: '人工回复' }) },
+    );
+    expect(reply.body.delivered).toBe(true);
+    expect((await pendingReq).status).toBe(200);
+
+    const msgs = listThreadMessages(s.db, job.threadId);
+    expect(msgs.map((m) => [m.role, m.content])).toEqual([
+      ['user', '只应回复一次'],
+      ['assistant', '人工回复'],
+    ]);
+  });
+
   it('忽略挂起请求 → 客户端收到 504', async () => {
     const s = await boot();
     const cookie = await login(s);
