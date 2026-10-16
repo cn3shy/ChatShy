@@ -1,0 +1,32 @@
+src/core/hub.ts
+  s_030b9a1f38bdbf::t_fb6223c201c70d 1-54
+src/core/threads.ts
+  s_030b9a1f38bdbf::t_46db494585c34c 1-255
+test/unit/threads.test.ts
+  s_030b9a1f38bdbf::t_55ea789e995193 1-101
+test/unit/hub.test.ts
+  s_030b9a1f38bdbf::t_29782990f3037f 1-66
+test/unit/jobs.test.ts
+  s_030b9a1f38bdbf::t_da790edc1fe236 57
+  s_030b9a1f38bdbf::t_572d002154c61b 1-56,58-128
+src/protocol/types.ts
+  s_030b9a1f38bdbf::t_a3612b3f2ded28 1-25
+src/core/jobs.ts
+  s_030b9a1f38bdbf::t_b53f6411ff406f 1-188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2bef57f2029977a9ebf9d1243c56fa7f3b6a30db",
+  "prompts": {},
+  "sessions": {
+    "s_030b9a1f38bdbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd57095d-9ade-484e-8daa-16f73cdcb188",
+        "model": "deepseek-flash"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
