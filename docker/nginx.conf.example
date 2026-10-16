@@ -1,0 +1,28 @@
+# Nginx 反代备选方案（有 Caddy 就优先用 Caddy，自动证书且对 SSE 零配置）
+server {
+    listen 443 ssl http2;
+    server_name chatshy.example.com;
+
+    # ssl_certificate     /etc/letsencrypt/live/chatshy.example.com/fullchain.pem;
+    # ssl_certificate_key /etc/letsencrypt/live/chatshy.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 关键：流式接口（SSE）必须关闭缓冲，否则回复会被卡在 Nginx 里
+        proxy_buffering off;
+        proxy_cache off;
+        # 挂起请求最长等待时间（按你的 key 超时配置酌情放大）
+        proxy_read_timeout 600s;
+    }
+}
+
+server {
+    listen 80;
+    server_name chatshy.example.com;
+    return 301 https://$host$request_uri;
+}

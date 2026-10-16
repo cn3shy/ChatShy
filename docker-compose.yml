@@ -1,0 +1,41 @@
+services:
+  chatshy:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DB_PATH=/data/chatshy.db
+    volumes:
+      - ./data:/data
+    expose:
+      - '8787'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8787/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # 自动 HTTPS 反向代理；把 docker/Caddyfile 里的域名换成你自己的（DNS 先解析到本机）
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - chatshy
+
+volumes:
+  caddy_data:
+  caddy_config:

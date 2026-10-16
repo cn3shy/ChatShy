@@ -1,0 +1,9 @@
+node_modules
+dist
+data
+data-smoke
+.env
+.git
+docs
+web/node_modules
+web/dist

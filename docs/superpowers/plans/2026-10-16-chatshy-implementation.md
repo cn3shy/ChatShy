@@ -161,3 +161,13 @@
 
 - 任务 1→2→3 串行（地基）；任务 4、5、6 依赖 2/3，可两两并行；任务 7、8 仅依赖 1，随时可做；任务 9 依赖 4/5/7；任务 10 依赖 9/7/8；任务 11 依赖 6；任务 12 依赖 9-11；前端 13-16 依赖 11 的 API 冻结；17-19 收尾。
 - 每个任务提交一次 git，消息格式：`feat: <任务名>` / `test: ...` / `chore: ...`（附 Co-Authored-By 行）。
+
+## 实现完成记录（2026-10-16）
+
+M0–M5 全部任务已按计划完成，75 个自动化测试全绿，编译产物 curl 端到端冒烟（登录 → 建 key → 挂起请求 → 操作台回复 → 客户端收到规范响应）通过。与计划的少量偏差：
+
+1. **集成测试形式**：采用"进程内起真实 HTTP 服务 + 官方 openai / @anthropic-ai/sdk"而非另起子进程——同为真实网络栈，更快更稳（测试总时长 2.5 秒）。
+2. **迁移 v1 微调**：`threads.key_id` 可为空，用于操作台测试会话（不绑定 key、不参与 API 归并）；`ThreadProtocol` 增加 `'console'`。
+3. **Fastify 加固**：`forceCloseConnections: true`（关闭即断开挂起请求，符合设计 §3.5）与宽容 JSON 解析（空 body 视为 `{}`，避免无参 POST 被 400）。
+4. **better-sqlite3 安装**：v13 自带全平台预编译二进制（prebuildify 方式），无需 node-gyp/VS；npm 12 需在 package.json `allowScripts` 放行 esbuild、拒绝 better-sqlite3 构建脚本。Docker 运行层用 `npm ci --omit=dev --ignore-scripts` 规避。
+5. **Docker 产物未实测**：开发机（Windows）未安装 Docker，Dockerfile / compose / Caddyfile / Nginx 示例已按 node:24-slim + 预编译依赖写好，首次在服务器构建时如有偏差按报错微调即可。
