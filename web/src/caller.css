@@ -82,21 +82,6 @@
   height: 14px;
 }
 
-.db-icon-btn {
-  background: transparent;
-  border: none;
-  color: var(--db-muted);
-  font-size: 1rem;
-  padding: 6px 8px;
-  border-radius: 8px;
-  line-height: 1;
-}
-
-.db-icon-btn:hover {
-  background: var(--db-hover);
-  color: var(--db-text);
-}
-
 /* ---- 消息区 ---- */
 
 .db-main {
@@ -328,24 +313,6 @@
   margin-top: 8px;
 }
 
-.db-pill {
-  background: var(--db-hover);
-  border: none;
-  color: var(--db-muted);
-  border-radius: 999px;
-  padding: 5px 12px;
-  font-size: 0.78rem;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.db-pill:hover {
-  color: var(--db-accent);
-  background: var(--db-accent-soft);
-}
-
 .db-send {
   margin-left: auto;
   flex: none;
@@ -379,115 +346,13 @@
   height: 17px;
 }
 
-.db-hint {
-  color: var(--db-muted);
-  font-size: 0.8rem;
-  margin: 8px 2px 0;
-}
-
-/* ---- 设置弹窗 ---- */
-
-.db-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(31, 35, 41, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  z-index: 10;
-}
-
-.db-modal {
-  background: var(--db-card);
-  border-radius: 16px;
-  padding: 20px 22px;
-  width: min(420px, 100%);
-  box-shadow: 0 10px 40px rgba(31, 35, 41, 0.18);
-}
-
-.db-modal h3 {
-  margin: 0 0 16px;
-  font-size: 1.05rem;
-}
-
-.db-field {
-  display: block;
-  margin-bottom: 12px;
-}
-
-.db-field span {
-  display: block;
-  color: var(--db-muted);
-  font-size: 0.8rem;
-  margin-bottom: 5px;
-}
-
-.db-field input,
-.db-field select {
-  width: 100%;
-  background: var(--db-bg);
-  border: 1px solid var(--db-border);
-  border-radius: 9px;
-  padding: 8px 11px;
-  color: inherit;
-  font: inherit;
-  font-size: 0.9rem;
-  outline: none;
-}
-
-.db-field input:focus,
-.db-field select:focus {
-  border-color: var(--db-accent);
-}
-
-.db-check {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--db-muted);
-  font-size: 0.85rem;
-  margin-bottom: 16px;
-}
-
-.db-modal-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.db-btn {
-  border-radius: 9px;
-  padding: 8px 16px;
-  font-size: 0.88rem;
-  border: 1px solid transparent;
-}
-
-.db-btn.primary {
-  margin-left: auto;
-  background: var(--db-accent);
-  color: #fff;
-}
-
-.db-btn.primary:hover {
-  background: #2f5fe0;
-}
-
-.db-btn.ghost {
-  background: transparent;
-  border-color: var(--db-border);
-  color: var(--db-muted);
-}
-
-.db-btn.ghost:hover {
+/* 链接里没带 Key 时的提示（页面上没有设置入口，只能靠管理员给对链接） */
+.db-nokey {
+  max-width: 780px;
+  margin: 0 auto 8px;
   color: var(--db-danger);
-  border-color: var(--db-danger);
-}
-
-.db-note {
-  color: var(--db-muted);
-  font-size: 0.78rem;
-  margin: 14px 0 0;
+  font-size: 0.82rem;
+  text-align: center;
 }
 
 /* ---- 响应式 ---- */

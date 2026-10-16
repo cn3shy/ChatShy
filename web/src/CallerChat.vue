@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import './caller.css';
 import { renderMarkdown } from './markdown';
 
@@ -15,23 +15,31 @@ interface ApiFail {
 
 const LS = {
   key: 'chatshy.caller.key',
-  protocol: 'chatshy.caller.protocol',
-  stream: 'chatshy.caller.stream',
   history: 'chatshy.caller.history',
 };
 
-const apiKey = ref(localStorage.getItem(LS.key) ?? '');
-// 不设模型名：请求里干脆不带 model 字段，由服务端回落到操作台配置的模型名
-const protocol = ref<'openai' | 'anthropic'>(
-  localStorage.getItem(LS.protocol) === 'anthropic' ? 'anthropic' : 'openai',
-);
-const stream = ref(localStorage.getItem(LS.stream) !== '0');
+/**
+ * 页面上没有任何设置入口，API Key 只能从管理员分享的链接里来：`/chat?key=sk-chatshy-…`。
+ * 读出来后存本地，并把地址栏里的 key 抹掉——否则用户复制地址栏分享给别人时，
+ * 会把凭据一起带出去。抹掉后同一台设备靠 localStorage 继续可用。
+ */
+function takeKeyFromUrl(): void {
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = params.get('key');
+  if (fromUrl === null || fromUrl.trim() === '') return;
+  localStorage.setItem(LS.key, fromUrl.trim());
+  params.delete('key');
+  const rest = params.toString();
+  window.history.replaceState({}, '', window.location.pathname + (rest === '' ? '' : `?${rest}`));
+}
 
+takeKeyFromUrl();
+
+const apiKey = ref(localStorage.getItem(LS.key) ?? '');
 const messages = reactive<ChatTurn[]>(loadHistory());
 const input = ref('');
 const sending = ref(false);
 const error = ref('');
-const showSettings = ref(false);
 const listEl = ref<HTMLElement | null>(null);
 const taEl = ref<HTMLTextAreaElement | null>(null);
 let abortCtrl: AbortController | null = null;
@@ -60,13 +68,9 @@ function loadHistory(): ChatTurn[] {
 }
 
 function persist(): void {
-  localStorage.setItem(LS.key, apiKey.value);
-  localStorage.setItem(LS.protocol, protocol.value);
-  localStorage.setItem(LS.stream, stream.value ? '1' : '0');
   localStorage.setItem(LS.history, JSON.stringify(messages.slice(-40)));
 }
 
-watch([apiKey, protocol, stream], persist);
 watch(
   () => messages.length + (messages.at(-1)?.content.length ?? 0),
   async () => {
@@ -80,7 +84,7 @@ function friendlyError(err: unknown): string {
   if (err !== null && typeof err === 'object' && 'status' in err) {
     const fail = err as ApiFail;
     const base: Record<number, string> = {
-      401: 'API Key 无效，请点右上角 ⚙ 检查',
+      401: 'API Key 已失效，请联系管理员要一条新的链接',
       429: '请求太频繁，稍后再试',
       504: '超时：操作员没有及时回复这次请求',
       529: '超时：操作员没有及时回复这次请求',
@@ -130,20 +134,19 @@ async function consumeSse(res: Response, onData: (data: string) => void): Promis
   }
 }
 
-async function callOpenAI(payload: ChatTurn[], target: ChatTurn, signal: AbortSignal): Promise<void> {
+/**
+ * 固定走 OpenAI 格式 + 流式。
+ * 页面上没有协议/流式的开关了；请求里也不带 model，由服务端回落到操作台配置的模型名。
+ */
+async function callGateway(payload: ChatTurn[], target: ChatTurn, signal: AbortSignal): Promise<void> {
   const res = await fetch('/v1/chat/completions', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey.value.trim()}` },
-    body: JSON.stringify({ messages: payload, stream: stream.value }),
+    body: JSON.stringify({ messages: payload, stream: true }),
     signal,
   });
   if (!res.ok) throw await parseFail(res);
 
-  if (!stream.value) {
-    const body = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    target.content = body.choices?.[0]?.message?.content ?? '';
-    return;
-  }
   await consumeSse(res, (dataStr) => {
     if (dataStr === '[DONE]') return;
     const j = JSON.parse(dataStr) as {
@@ -153,45 +156,6 @@ async function callOpenAI(payload: ChatTurn[], target: ChatTurn, signal: AbortSi
     if (j.error !== undefined) throw { status: 504, message: j.error.message ?? '流中断' } satisfies ApiFail;
     const delta = j.choices?.[0]?.delta?.content;
     if (typeof delta === 'string') target.content += delta;
-  });
-}
-
-async function callAnthropic(payload: ChatTurn[], target: ChatTurn, signal: AbortSignal): Promise<void> {
-  const res = await fetch('/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey.value.trim(),
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      max_tokens: 4096,
-      messages: payload,
-      stream: stream.value,
-    }),
-    signal,
-  });
-  if (!res.ok) throw await parseFail(res);
-
-  if (!stream.value) {
-    const body = (await res.json()) as { content?: Array<{ type?: string; text?: string }> };
-    target.content = (body.content ?? [])
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text ?? '')
-      .join('');
-    return;
-  }
-  await consumeSse(res, (dataStr) => {
-    const j = JSON.parse(dataStr) as {
-      type?: string;
-      delta?: { type?: string; text?: string };
-      error?: { message?: string };
-    };
-    if (j.type === 'content_block_delta' && j.delta?.type === 'text_delta') {
-      target.content += j.delta.text ?? '';
-    } else if (j.type === 'error') {
-      throw { status: 529, message: j.error?.message ?? '流中断' } satisfies ApiFail;
-    }
   });
 }
 
@@ -209,8 +173,7 @@ async function send(): Promise<void> {
   abortCtrl = new AbortController();
 
   try {
-    if (protocol.value === 'openai') await callOpenAI(payload, assistant, abortCtrl.signal);
-    else await callAnthropic(payload, assistant, abortCtrl.signal);
+    await callGateway(payload, assistant, abortCtrl.signal);
     if (assistant.content === '') {
       messages.pop();
       error.value = '操作员回复为空，请重试';
@@ -260,11 +223,7 @@ function useTip(text: string): void {
   void nextTick(() => taEl.value?.focus());
 }
 
-onMounted(() => {
-  document.title = 'ChatShy · 对话';
-  // 还没配 Key 就直接把设置摊开，省得用户对着输入框发不出去
-  if (!hasKey.value) showSettings.value = true;
-});
+document.title = 'ChatShy · 对话';
 </script>
 
 <template>
@@ -279,7 +238,6 @@ onMounted(() => {
         </button>
         <div class="db-brand"><span class="db-brand-dot"></span>ChatShy</div>
       </div>
-      <button class="db-icon-btn" title="设置" @click="showSettings = true">⚙</button>
     </header>
 
     <main ref="listEl" class="db-main">
@@ -309,23 +267,21 @@ onMounted(() => {
     </main>
 
     <div class="db-composer-wrap">
+      <p v-if="!hasKey" class="db-nokey">
+        这个链接里没有 API Key。请找管理员要一条带 Key 的完整访问链接。
+      </p>
       <div class="db-composer">
         <textarea
           ref="taEl"
           v-model="input"
           class="db-ta"
           rows="1"
-          :disabled="sending"
+          :disabled="sending || !hasKey"
           placeholder="给 ChatShy 发消息"
           @keydown="onKeydown"
           @input="autoGrow"
         ></textarea>
         <div class="db-tools">
-          <button class="db-pill" @click="showSettings = true">
-            {{ protocol === 'openai' ? 'OpenAI 格式' : 'Anthropic 格式' }}<template v-if="stream">
-              · 流式</template
-            >
-          </button>
           <button v-if="!sending" class="db-send" :disabled="!canSend" title="发送" @click="send">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 19V5M5 12l7-7 7 7" />
@@ -337,29 +293,6 @@ onMounted(() => {
             </svg>
           </button>
         </div>
-        <p v-if="!hasKey" class="db-hint">先点右上角 ⚙ 填上 API Key 才能发送</p>
-      </div>
-    </div>
-
-    <div v-if="showSettings" class="db-mask" @click.self="showSettings = false">
-      <div class="db-modal">
-        <h3>设置</h3>
-        <label class="db-field">
-          <span>API Key（找管理员要）</span>
-          <input v-model="apiKey" type="password" placeholder="sk-chatshy-…" autocomplete="off" />
-        </label>
-        <label class="db-field">
-          <span>协议</span>
-          <select v-model="protocol">
-            <option value="openai">OpenAI 格式</option>
-            <option value="anthropic">Anthropic 格式</option>
-          </select>
-        </label>
-        <label class="db-check"><input v-model="stream" type="checkbox" /> 流式接收</label>
-        <div class="db-modal-actions">
-          <button class="db-btn primary" @click="showSettings = false">完成</button>
-        </div>
-        <p class="db-note">API Key 与对话记录只存在你这台设备的浏览器里。</p>
       </div>
     </div>
   </div>
