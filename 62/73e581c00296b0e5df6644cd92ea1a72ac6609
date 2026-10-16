@@ -1,0 +1,24 @@
+src/protocol/anthropic.ts
+  s_030b9a1f38bdbf::t_ef3800a4465460 45,49-54,68-70
+  s_030b9a1f38bdbf::t_7ea99f28f25722 71
+test/unit/protocol-anthropic.test.ts
+  s_030b9a1f38bdbf::t_3b24ff3c3099b8 54-76,81
+test/integration/compat.test.ts
+  s_030b9a1f38bdbf::t_ea59bc749bd4c2 90-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6273e581c00296b0e5df6644cd92ea1a72ac6609",
+  "prompts": {},
+  "sessions": {
+    "s_030b9a1f38bdbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd57095d-9ade-484e-8daa-16f73cdcb188",
+        "model": "deepseek-flash"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
