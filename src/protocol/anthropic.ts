@@ -108,22 +108,26 @@ export function renderMessage(p: MessageParams): object {
   };
 }
 
-/** 完整流式事件序列（设计 §4.3），不含心跳；server 层负责穿插 ping */
-export function buildMessageFrames(p: MessageParams): string[] {
+/** 连接建立后立即发送的首帧（message_start），让客户端确认服务已响应 */
+export function messageStartFrame(p: { id: string; model: string; inputTokens: number }): string {
+  return eventFrame('message_start', {
+    type: 'message_start',
+    message: {
+      id: p.id,
+      type: 'message',
+      role: 'assistant',
+      model: p.model,
+      content: [],
+      stop_reason: null,
+      stop_sequence: null,
+      usage: { input_tokens: p.inputTokens, output_tokens: 0 },
+    },
+  });
+}
+
+/** 回复就绪后发送的事件：content_block_* → message_delta → message_stop */
+export function messageContentFrames(p: MessageParams): string[] {
   return [
-    eventFrame('message_start', {
-      type: 'message_start',
-      message: {
-        id: p.id,
-        type: 'message',
-        role: 'assistant',
-        model: p.model,
-        content: [],
-        stop_reason: null,
-        stop_sequence: null,
-        usage: { input_tokens: p.inputTokens, output_tokens: 0 },
-      },
-    }),
     eventFrame('content_block_start', {
       type: 'content_block_start',
       index: 0,
@@ -142,6 +146,11 @@ export function buildMessageFrames(p: MessageParams): string[] {
     }),
     eventFrame('message_stop', { type: 'message_stop' }),
   ];
+}
+
+/** 完整流式事件序列（设计 §4.3），不含心跳；server 层负责穿插 ping */
+export function buildMessageFrames(p: MessageParams): string[] {
+  return [messageStartFrame(p), ...messageContentFrames(p)];
 }
 
 // ---- 错误体 ----

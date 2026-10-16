@@ -14,12 +14,14 @@ import type { ChatMsg, Protocol } from '../protocol/types.js';
 
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type MessageSource = 'api' | 'console';
+/** 'console' = 操作台测试会话，不绑定任何 key */
+export type ThreadProtocol = Protocol | 'console';
 
 export interface ThreadRecord {
   id: string;
-  keyId: string;
+  keyId: string | null;
   title: string;
-  protocol: Protocol;
+  protocol: ThreadProtocol;
   model: string;
   fingerprint: string;
   createdAt: number;
@@ -38,7 +40,7 @@ export interface MessageRecord {
 
 interface ThreadRow {
   id: string;
-  key_id: string;
+  key_id: string | null;
   title: string;
   protocol: string;
   model: string;
@@ -62,7 +64,7 @@ function threadToRecord(row: ThreadRow): ThreadRecord {
     id: row.id,
     keyId: row.key_id,
     title: row.title,
-    protocol: row.protocol as Protocol,
+    protocol: row.protocol as ThreadProtocol,
     model: row.model,
     fingerprint: row.fingerprint,
     createdAt: row.created_at,
@@ -167,6 +169,17 @@ export function resolveThread(db: Db, params: ResolveParams): { thread: ThreadRe
 export function getThread(db: Db, id: string): ThreadRecord | null {
   const row = db.prepare('SELECT * FROM threads WHERE id = ?').get(id) as ThreadRow | undefined;
   return row === undefined ? null : threadToRecord(row);
+}
+
+/** 新建操作台测试会话（无 key，不参与 API 归并） */
+export function createConsoleThread(db: Db, title: string): ThreadRecord {
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO threads (id, key_id, title, protocol, model, fingerprint, created_at, updated_at)
+     VALUES (?, NULL, ?, 'console', '', '', ?, ?)`,
+  ).run(id, title.slice(0, 50), now, now);
+  return getThread(db, id)!;
 }
 
 /** 完整消息历史（含 system 与控制台消息），按时间升序 */

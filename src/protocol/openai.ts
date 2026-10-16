@@ -144,10 +144,23 @@ export function renderCompletion(p: CompletionParams): object {
   };
 }
 
-/** 完整流式事件序列（整段内容一次送达），不含心跳；server 层负责穿插 ping */
-export function buildCompletionFrames(p: CompletionParams): string[] {
+/** 流式空档期心跳：SSE 注释行，被所有客户端解析器忽略 */
+export const SSE_PING_COMMENT = ': ping\n\n';
+
+/** 连接建立后立即发送的首帧（role delta），让客户端确认服务已响应 */
+export function completionRoleFrame(p: { id: string; created: number; model: string }): string {
+  return sseFrame({
+    id: p.id,
+    object: 'chat.completion.chunk',
+    created: p.created,
+    model: p.model,
+    choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }],
+  });
+}
+
+/** 回复就绪后发送的帧：内容 delta、finish、（可选）usage、[DONE] */
+export function completionContentFrames(p: CompletionParams): string[] {
   const frames = [
-    sseFrame(chunk(p, [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }])),
     sseFrame(chunk(p, [{ index: 0, delta: { content: p.content }, finish_reason: null }])),
     sseFrame(chunk(p, [{ index: 0, delta: {}, finish_reason: 'stop' }])),
   ];
@@ -156,6 +169,11 @@ export function buildCompletionFrames(p: CompletionParams): string[] {
   }
   frames.push(SSE_DONE);
   return frames;
+}
+
+/** 完整流式事件序列（整段内容一次送达），不含心跳；server 层负责穿插 ping */
+export function buildCompletionFrames(p: CompletionParams): string[] {
+  return [completionRoleFrame(p), ...completionContentFrames(p)];
 }
 
 export function renderModel(modelName: string, created: number): object {

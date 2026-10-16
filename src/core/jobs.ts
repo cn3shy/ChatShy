@@ -166,6 +166,11 @@ export class JobQueue {
     return n;
   }
 
+  /** 当前所有挂起中的 Job（调试与测试用） */
+  listPending(): PendingJob[] {
+    return [...this.jobs.values()].filter((j) => j.status === 'pending');
+  }
+
   private finish(job: PendingJob, outcome: JobOutcome): void {
     if (job.status !== 'pending') return;
     if (job._timer !== null) {

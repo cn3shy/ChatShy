@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS keys (
 
 CREATE TABLE IF NOT EXISTS threads (
   id          TEXT PRIMARY KEY,
-  key_id      TEXT NOT NULL REFERENCES keys(id) ON DELETE CASCADE,
+  key_id      TEXT REFERENCES keys(id) ON DELETE CASCADE,
   title       TEXT NOT NULL DEFAULT '',
   protocol    TEXT NOT NULL,
   model       TEXT NOT NULL DEFAULT '',

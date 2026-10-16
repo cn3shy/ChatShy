@@ -1,0 +1,65 @@
+import cookie from '@fastify/cookie';
+import cors from '@fastify/cors';
+import Fastify, { type FastifyInstance } from 'fastify';
+import type { OperatorHub } from '../core/hub.js';
+import type { JobQueue } from '../core/jobs.js';
+import type { Db } from '../db/db.js';
+import { registerAdminRoutes } from './routes/admin.js';
+import { registerAnthropicRoutes } from './routes/anthropic.js';
+import { registerOpenAIRoutes } from './routes/openai.js';
+import { SessionStore } from './session.js';
+
+export interface ServerContext {
+  db: Db;
+  queue: JobQueue;
+  hub: OperatorHub;
+  sessions: SessionStore;
+  /** 调用方 SSE 空档期心跳间隔（毫秒），默认 15 秒；测试可调小 */
+  ssePingMs?: number;
+  /** 管理端 SSE ping 间隔（毫秒），默认 20 秒 */
+  hubPingMs?: number;
+}
+
+export async function buildServer(ctx: ServerContext, opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
+  const app = Fastify({
+    logger: opts.logger ?? false,
+    bodyLimit: 10 * 1024 * 1024,
+    trustProxy: true,
+    // 关闭时强制断开所有连接：挂起请求随重启丢弃（设计 §3.5），同时避免 close() 被长连接拖住
+    forceCloseConnections: true,
+  });
+
+  // 挂起请求需要长时间等待人工回复，禁用 Node 默认的 300 秒请求超时（设计 §4.5）
+  app.server.requestTimeout = 0;
+
+  // 宽容解析：带 application/json 头但空 body 的请求（如无参 POST）视为 {}
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    const text = typeof body === 'string' ? body : body.toString('utf8');
+    if (text === '') return done(null, {});
+    try {
+      done(null, JSON.parse(text));
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  });
+
+  await app.register(cors, {
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'anthropic-version'],
+  });
+  await app.register(cookie);
+
+  app.get('/healthz', async () => ({ ok: true }));
+
+  registerOpenAIRoutes(app, ctx);
+  registerAnthropicRoutes(app, ctx);
+  registerAdminRoutes(app, ctx);
+
+  ctx.hub.startPing(ctx.hubPingMs ?? 20_000);
+  app.addHook('onClose', async () => {
+    ctx.hub.stopPing();
+  });
+
+  return app;
+}

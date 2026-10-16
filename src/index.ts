@@ -1,24 +1,22 @@
-import Fastify from 'fastify';
 import { config } from './config.js';
+import { OperatorHub } from './core/hub.js';
+import { JobQueue } from './core/jobs.js';
+import { ensureAdminPassword, initSettings } from './core/settings.js';
 import { openDb } from './db/db.js';
 import { migrate } from './db/migrate.js';
-import { ensureAdminPassword, initSettings } from './core/settings.js';
+import { buildServer } from './server/app.js';
+import { SessionStore } from './server/session.js';
 
 const db = openDb(config.dbPath);
 migrate(db);
 initSettings(db, { defaultTimeoutMs: config.defaultTimeoutMs, modelName: config.modelName });
 const adminBootstrap = ensureAdminPassword(db, config.adminPassword);
 
-const app = Fastify({
-  logger: true,
-  bodyLimit: 10 * 1024 * 1024,
-  trustProxy: true,
-});
+const hub = new OperatorHub();
+const queue = new JobQueue(db, (evt) => hub.broadcast(evt));
+const sessions = new SessionStore();
 
-// 调用方请求需要长时间挂起等人工回复，必须禁用 Node 默认的 300 秒请求超时（设计 §4.5）
-app.server.requestTimeout = 0;
-
-app.get('/healthz', async () => ({ ok: true }));
+const app = await buildServer({ db, queue, hub, sessions }, { logger: true });
 
 try {
   await app.listen({ port: config.port, host: '0.0.0.0' });
