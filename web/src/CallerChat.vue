@@ -15,14 +15,13 @@ interface ApiFail {
 
 const LS = {
   key: 'chatshy.caller.key',
-  model: 'chatshy.caller.model',
   protocol: 'chatshy.caller.protocol',
   stream: 'chatshy.caller.stream',
   history: 'chatshy.caller.history',
 };
 
 const apiKey = ref(localStorage.getItem(LS.key) ?? '');
-const model = ref(localStorage.getItem(LS.model) ?? 'chatshy');
+// 不设模型名：请求里干脆不带 model 字段，由服务端回落到操作台配置的模型名
 const protocol = ref<'openai' | 'anthropic'>(
   localStorage.getItem(LS.protocol) === 'anthropic' ? 'anthropic' : 'openai',
 );
@@ -62,13 +61,12 @@ function loadHistory(): ChatTurn[] {
 
 function persist(): void {
   localStorage.setItem(LS.key, apiKey.value);
-  localStorage.setItem(LS.model, model.value);
   localStorage.setItem(LS.protocol, protocol.value);
   localStorage.setItem(LS.stream, stream.value ? '1' : '0');
   localStorage.setItem(LS.history, JSON.stringify(messages.slice(-40)));
 }
 
-watch([apiKey, model, protocol, stream], persist);
+watch([apiKey, protocol, stream], persist);
 watch(
   () => messages.length + (messages.at(-1)?.content.length ?? 0),
   async () => {
@@ -136,7 +134,7 @@ async function callOpenAI(payload: ChatTurn[], target: ChatTurn, signal: AbortSi
   const res = await fetch('/v1/chat/completions', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey.value.trim()}` },
-    body: JSON.stringify({ model: model.value.trim() || 'chatshy', messages: payload, stream: stream.value }),
+    body: JSON.stringify({ messages: payload, stream: stream.value }),
     signal,
   });
   if (!res.ok) throw await parseFail(res);
@@ -167,7 +165,6 @@ async function callAnthropic(payload: ChatTurn[], target: ChatTurn, signal: Abor
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: model.value.trim() || 'chatshy',
       max_tokens: 4096,
       messages: payload,
       stream: stream.value,
@@ -273,7 +270,15 @@ onMounted(() => {
 <template>
   <div class="db-page">
     <header class="db-top">
-      <div class="db-brand"><span class="db-brand-dot"></span>ChatShy</div>
+      <div class="db-top-left">
+        <button class="db-top-btn" title="清空本页对话记录" @click="clearHistory">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+          </svg>
+          清空对话
+        </button>
+        <div class="db-brand"><span class="db-brand-dot"></span>ChatShy</div>
+      </div>
       <button class="db-icon-btn" title="设置" @click="showSettings = true">⚙</button>
     </header>
 
@@ -317,8 +322,9 @@ onMounted(() => {
         ></textarea>
         <div class="db-tools">
           <button class="db-pill" @click="showSettings = true">
-            {{ protocol === 'openai' ? 'OpenAI 格式' : 'Anthropic 格式' }} · {{ model || 'chatshy'
-            }}<template v-if="stream"> · 流式</template>
+            {{ protocol === 'openai' ? 'OpenAI 格式' : 'Anthropic 格式' }}<template v-if="stream">
+              · 流式</template
+            >
           </button>
           <button v-if="!sending" class="db-send" :disabled="!canSend" title="发送" @click="send">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
@@ -349,13 +355,8 @@ onMounted(() => {
             <option value="anthropic">Anthropic 格式</option>
           </select>
         </label>
-        <label class="db-field">
-          <span>模型名</span>
-          <input v-model="model" placeholder="chatshy" />
-        </label>
         <label class="db-check"><input v-model="stream" type="checkbox" /> 流式接收</label>
         <div class="db-modal-actions">
-          <button class="db-btn ghost" @click="clearHistory">清空本页对话</button>
           <button class="db-btn primary" @click="showSettings = false">完成</button>
         </div>
         <p class="db-note">API Key 与对话记录只存在你这台设备的浏览器里。</p>

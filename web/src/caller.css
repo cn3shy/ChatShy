@@ -50,6 +50,38 @@
   background: var(--db-accent);
 }
 
+.db-top-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 清空对话：放在左上角，不进设置弹窗 */
+.db-top-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--db-muted);
+  border-radius: 8px;
+  padding: 5px 9px;
+  font-size: 0.82rem;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.db-top-btn:hover {
+  background: var(--db-hover);
+  color: var(--db-danger);
+}
+
+.db-top-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
 .db-icon-btn {
   background: transparent;
   border: none;
