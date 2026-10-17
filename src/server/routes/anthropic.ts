@@ -17,6 +17,7 @@ import {
 import { estimateTokens } from '../../protocol/types.js';
 import type { ServerContext } from '../app.js';
 import { requireCallerKey } from '../auth.js';
+import { maybeAutoForward } from '../forwarder.js';
 import { serveNonStream, serveStream } from '../serve.js';
 
 /**
@@ -48,6 +49,8 @@ export function registerAnthropicRoutes(app: FastifyInstance, ctx: ServerContext
       timeoutMs: getDefaultTimeoutMs(ctx.db),
     });
     linkLatestUserMessageToJob(ctx.db, thread.id, job.id);
+    // 自动转发在服务端继续跑：操作台关掉/断网也不影响
+    maybeAutoForward(ctx, job, parsed.value.prompt);
 
     const id = newMessageId();
     const promptTokens = estimateTokens(

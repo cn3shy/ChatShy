@@ -121,11 +121,14 @@ export class JobQueue {
     return this.jobs.get(jobId) ?? null;
   }
 
-  /** 操作员回复：完成该 Job，对调用方兑现内容 */
-  reply(jobId: string, content: string): boolean {
+  /**
+   * 操作员/AI 转发回复：完成该 Job，对调用方兑现内容。
+   * via 是厂商名快照（人工回复不传），随 jobs 行一起落库供操作台展示。
+   */
+  reply(jobId: string, content: string, via?: string): boolean {
     const job = this.jobs.get(jobId);
     if (job === undefined || job.status !== 'pending') return false;
-    this.finish(job, { kind: 'replied', content });
+    this.finish(job, { kind: 'replied', content }, via);
     return true;
   }
 
@@ -175,7 +178,7 @@ export class JobQueue {
     return [...this.jobs.values()].filter((j) => j.status === 'pending');
   }
 
-  private finish(job: PendingJob, outcome: JobOutcome): void {
+  private finish(job: PendingJob, outcome: JobOutcome, via?: string): void {
     if (job.status !== 'pending') return;
     if (job._timer !== null) {
       clearTimeout(job._timer);
@@ -186,8 +189,10 @@ export class JobQueue {
 
     if (outcome.kind === 'replied') {
       this.db
-        .prepare("UPDATE jobs SET status = 'replied', reply_content = ?, replied_at = ? WHERE id = ?")
-        .run(outcome.content, Date.now(), job.id);
+        .prepare(
+          "UPDATE jobs SET status = 'replied', reply_content = ?, replied_at = ?, via = ? WHERE id = ?",
+        )
+        .run(outcome.content, Date.now(), via ?? null, job.id);
     } else {
       this.db.prepare('UPDATE jobs SET status = ? WHERE id = ?').run(job.status, job.id);
     }

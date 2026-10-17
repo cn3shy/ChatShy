@@ -30,7 +30,9 @@ describe('migrate', () => {
     migrate(db);
 
     const names = tableNames(db);
-    expect(names).toEqual(expect.arrayContaining(['threads', 'messages', 'jobs', 'settings', 'schema_version']));
+    expect(names).toEqual(
+      expect.arrayContaining(['threads', 'messages', 'jobs', 'settings', 'schema_version', 'providers']),
+    );
     expect(names).not.toContain('keys');
 
     const row = db.prepare('SELECT version FROM schema_version').get() as { version: number };
@@ -108,6 +110,38 @@ describe('migrate', () => {
       { id: 't1', source_client: '旧 Key：alice', source_fingerprint: 'legacy:t1' },
       { id: 't2', source_client: '历史会话', source_fingerprint: 'legacy:t2' },
     ]);
+  });
+
+  it('从 v2 升级到 v3：providers 表与 jobs 转发列就位，老数据保留', () => {
+    const db = openDb(':memory:');
+    seedLegacyDb(db, 2);
+
+    const now = Date.now();
+    db.prepare(
+      "INSERT INTO threads (id, protocol, title, created_at, updated_at) VALUES ('t1', 'openai', '老会话', ?, ?)",
+    ).run(now, now);
+    db.prepare(
+      "INSERT INTO messages (id, thread_id, role, content, source, created_at) VALUES ('m1', 't1', 'user', '你好', 'api', ?)",
+    ).run(now);
+    db.prepare(
+      `INSERT INTO jobs (id, thread_id, protocol, mode, status, request_json, deadline_at, created_at)
+       VALUES ('j1', 't1', 'openai', 'stream', 'replied', '{}', ?, ?)`,
+    ).run(now, now);
+
+    migrate(db);
+
+    expect(tableNames(db)).toContain('providers');
+    expect(columnNames(db, 'jobs')).toEqual(
+      expect.arrayContaining(['via', 'provider_id', 'forward_error', 'forward_error_at']),
+    );
+    expect((db.prepare('SELECT COUNT(*) AS c FROM threads').get() as { c: number }).c).toBe(1);
+    expect((db.prepare('SELECT COUNT(*) AS c FROM messages').get() as { c: number }).c).toBe(1);
+    const job = db.prepare("SELECT status, via, provider_id FROM jobs WHERE id = 'j1'").get() as {
+      status: string;
+      via: string | null;
+      provider_id: string | null;
+    };
+    expect(job).toEqual({ status: 'replied', via: null, provider_id: null });
   });
 
   it('迁移只跑一次（版本号已是最新时是空操作）', () => {

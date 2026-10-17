@@ -1,4 +1,4 @@
-import type { SettingsInfo, ThreadDetail, ThreadSummary } from './types';
+import type { ProviderInfo, ProviderInput, SettingsInfo, ThreadDetail, ThreadSummary } from './types';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -45,10 +45,34 @@ export const api = {
   reply: (jobId: string, content: string) =>
     req<{ ok: boolean; delivered: boolean }>(`/admin/api/jobs/${jobId}/reply`, { method: 'POST', body: { content } }),
   ignore: (jobId: string) => req<{ ok: boolean }>(`/admin/api/jobs/${jobId}/ignore`, { method: 'POST', body: {} }),
+  /** 用指定厂商直接回复挂起请求；上游失败会抛 ApiError（502） */
+  forwardJob: (jobId: string, providerId: string) =>
+    req<{ ok: boolean; delivered: boolean; content: string; providerName: string }>(
+      `/admin/api/jobs/${jobId}/forward`,
+      { method: 'POST', body: { providerId } },
+    ),
 
   settings: () => req<SettingsInfo>('/admin/api/settings'),
-  patchSettings: (patch: { defaultTimeoutMs?: number; modelName?: string; adminPassword?: string; currentPassword?: string }) =>
-    req<{ ok: boolean; defaultTimeoutMs: number; modelName: string }>('/admin/api/settings', { method: 'PATCH', body: patch }),
+  patchSettings: (patch: {
+    defaultTimeoutMs?: number;
+    modelName?: string;
+    adminPassword?: string;
+    currentPassword?: string;
+    autoForwardEnabled?: boolean;
+    autoForwardProviderId?: string;
+  }) => req<SettingsInfo & { ok: boolean }>('/admin/api/settings', { method: 'PATCH', body: patch }),
   /** 重新生成全局调用方 Key；旧 Key 立即失效 */
   regenerateCallerKey: () => req<{ callerKey: string }>('/admin/api/caller-key', { method: 'POST', body: {} }),
+
+  providers: () => req<{ providers: ProviderInfo[] }>('/admin/api/providers'),
+  createProvider: (input: ProviderInput) =>
+    req<{ provider: ProviderInfo }>('/admin/api/providers', { method: 'POST', body: input }),
+  updateProvider: (id: string, patch: Partial<ProviderInput>) =>
+    req<{ provider: ProviderInfo }>(`/admin/api/providers/${id}`, { method: 'PATCH', body: patch }),
+  deleteProvider: (id: string) => req<{ ok: boolean }>(`/admin/api/providers/${id}`, { method: 'DELETE' }),
+  testProvider: (id: string) =>
+    req<{ ok: boolean; latencyMs: number; preview: string }>(`/admin/api/providers/${id}/test`, {
+      method: 'POST',
+      body: {},
+    }),
 };

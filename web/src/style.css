@@ -485,6 +485,7 @@ code {
 .pending-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   margin: 0 20px 10px;
   padding: 10px 14px;
@@ -500,8 +501,202 @@ code {
   font-size: 1.05em;
 }
 
-.pending-bar .ghost-btn {
-  margin-left: auto;
+.pending-status {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.forward-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.provider-select {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+  max-width: 11rem;
+}
+
+.provider-select:disabled {
+  opacity: 0.55;
+}
+
+.ai-reply-btn {
+  color: var(--accent-2);
+  border-color: rgba(79, 140, 255, 0.45);
+}
+
+.ai-reply-btn:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(79, 140, 255, 0.2);
+}
+
+.forward-error-row {
+  margin: -4px 20px 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 107, 107, 0.45);
+  background: rgba(255, 107, 107, 0.08);
+  color: var(--danger);
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
+/* ---- 自动转发控制条（侧边栏） ---- */
+
+.auto-forward-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 6px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.auto-forward-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.auto-forward-toggle input {
+  accent-color: var(--ok);
+  cursor: pointer;
+}
+
+.auto-forward-toggle.on {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.auto-forward-provider {
+  flex: 1;
+  min-width: 90px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+}
+
+.auto-forward-msg {
+  margin: 6px 14px 0;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.auto-forward-msg.err {
+  color: var(--danger);
+}
+
+/* ---- 设置页：AI 厂商管理 ---- */
+
+.provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.provider-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.provider-main {
+  min-width: 0;
+}
+
+.provider-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.provider-url,
+.provider-key {
+  color: var(--muted);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+  margin-top: 3px;
+}
+
+.provider-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.provider-test {
+  margin-top: 6px;
+}
+
+.provider-form {
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+
+.provider-form h4 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+
+.provider-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.provider-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.provider-form-grid label.wide {
+  grid-column: 1 / -1;
+}
+
+.provider-form-grid input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.provider-form-grid input:focus {
+  border-color: var(--accent);
+}
+
+.provider-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ok-text {
+  color: var(--ok);
 }
 
 .pulse {

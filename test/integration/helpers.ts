@@ -53,6 +53,11 @@ const FETCH_BLOCKED_PORTS = new Set([
   6669, 6679, 6697, 10080,
 ]);
 
+/** 假上游等服务也要挑端口：undici 对 bad port 一视同仁，不只是被测服务本身 */
+export function isFetchBlockedPort(port: number): boolean {
+  return FETCH_BLOCKED_PORTS.has(port);
+}
+
 export function startTestServer(): Promise<TestServer> {
   return startTestServerOnSafePort(0);
 }
@@ -60,7 +65,7 @@ export function startTestServer(): Promise<TestServer> {
 async function startTestServerOnSafePort(attempt: number): Promise<TestServer> {
   const server = await bootTestServer();
   const port = Number(new URL(server.base).port);
-  if (!FETCH_BLOCKED_PORTS.has(port)) return server;
+  if (!isFetchBlockedPort(port)) return server;
   // close() 会连同临时目录一起清掉，所以这里直接整个重来
   await server.close();
   if (attempt >= 5) throw new Error(`反复拿到 fetch 拒绝的端口（最后一次是 ${port}）`);
