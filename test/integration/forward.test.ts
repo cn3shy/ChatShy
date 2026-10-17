@@ -169,6 +169,39 @@ async function patchSettings(
   return res.body;
 }
 
+/** 读 SSE 流，同时暴露"到目前为止收到的全部文本"，用来断言增量是否实时到达 */
+function readSse(res: Response): { done: Promise<string>; progress: () => string } {
+  let all = '';
+  const done = (async () => {
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { done: eof, value } = await reader.read();
+      if (eof) break;
+      all += decoder.decode(value, { stream: true });
+    }
+    return all;
+  })();
+  return { done, progress: () => all };
+}
+
+/** 假上游的 SSE 响应头 / 单个正文增量 */
+function sseHeaders(res: http.ServerResponse): void {
+  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+}
+
+function sseChunk(res: http.ServerResponse, content: string): void {
+  res.write(
+    `data: ${JSON.stringify({
+      id: 'chatcmpl-test',
+      object: 'chat.completion.chunk',
+      created: 0,
+      model: 'upstream-model',
+      choices: [{ index: 0, delta: { content }, finish_reason: null }],
+    })}\n\n`,
+  );
+}
+
 /** 发起一个会挂起的调用方请求（不 await，等转发或人工回复后再读） */
 function callerRequest(
   s: TestServer,
@@ -523,5 +556,168 @@ describe('AI 厂商转发（集成）', () => {
     });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('invalid_auto_forward');
+  });
+
+  it('流式调用方：上游增量实时下发，不等整段回复', async () => {
+    const s = await boot();
+    const upstream = await bootUpstream();
+    const cookie = await login(s);
+    const provider = await createProvider(s, cookie, upstream);
+    await patchSettings(s, cookie, { autoForwardEnabled: true, autoForwardProviderId: provider.id });
+
+    let release: (() => void) | null = null;
+    upstream.setHandler((_req, res) => {
+      sseHeaders(res);
+      sseChunk(res, '第一段');
+      release = () => {
+        sseChunk(res, '，第二段');
+        res.write('data: [DONE]\n\n');
+        res.end();
+      };
+    });
+
+    const res = await callerRequest(s, {
+      messages: [{ role: 'user', content: '流式转发' }],
+      stream: true,
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    const sse = readSse(res);
+
+    // 上游还在挂着（release 未调用），第一段必须已经到达调用方
+    await waitFor(() => sse.progress().includes('第一段'));
+    expect(release).not.toBeNull();
+    expect(sse.progress()).not.toContain('第二段');
+    expect(sse.progress()).not.toContain('[DONE]');
+
+    release!();
+    const text = await sse.done;
+    const deltas = [...text.matchAll(/"delta":\{"content":"([^"]*)"\}/g)].map((m) => m[1]!);
+    expect(deltas.join('')).toBe('第一段，第二段');
+    expect(text).toContain('"finish_reason":"stop"');
+    expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true);
+
+    // 上游收到的是流式请求，模型仍是厂商配置里的那个
+    expect(upstream.requests).toHaveLength(1);
+    expect(upstream.requests[0]!.body.stream).toBe(true);
+    expect(upstream.requests[0]!.body.model).toBe('upstream-model');
+
+    await waitFor(() => s.queue.listPending().length === 0);
+  });
+
+  it('Anthropic 流式调用方：转发增量按 Anthropic 事件实时下发', async () => {
+    const s = await boot();
+    const upstream = await bootUpstream();
+    const cookie = await login(s);
+    const provider = await createProvider(s, cookie, upstream);
+    await patchSettings(s, cookie, { autoForwardEnabled: true, autoForwardProviderId: provider.id });
+
+    let release: (() => void) | null = null;
+    upstream.setHandler((_req, res) => {
+      sseHeaders(res);
+      sseChunk(res, '你好');
+      release = () => {
+        sseChunk(res, '，世界');
+        res.write('data: [DONE]\n\n');
+        res.end();
+      };
+    });
+
+    const res = await fetch(`${s.base}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': s.key,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-test',
+        max_tokens: 128,
+        stream: true,
+        messages: [{ role: 'user', content: '流式转发' }],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const sse = readSse(res);
+
+    await waitFor(() => sse.progress().includes('"text":"你好"'));
+    expect(release).not.toBeNull();
+    expect(sse.progress()).not.toContain('"text":"，世界"');
+    expect(sse.progress()).not.toContain('message_stop');
+
+    release!();
+    const text = await sse.done;
+    const deltas = [...text.matchAll(/"type":"text_delta","text":"([^"]*)"/g)].map((m) => m[1]!);
+    expect(deltas.join('')).toBe('你好，世界');
+    expect(text).toContain('event: content_block_start');
+    expect(text).toContain('event: message_stop');
+    expect(upstream.requests[0]!.body.stream).toBe(true);
+  });
+
+  it('流式转发进行中：人工回复返回 409，不拼接半截正文', async () => {
+    const s = await boot();
+    const upstream = await bootUpstream();
+    const cookie = await login(s);
+    const provider = await createProvider(s, cookie, upstream);
+    await patchSettings(s, cookie, { autoForwardEnabled: true, autoForwardProviderId: provider.id });
+
+    let release: (() => void) | null = null;
+    upstream.setHandler((_req, res) => {
+      sseHeaders(res);
+      sseChunk(res, '上半句');
+      release = () => {
+        sseChunk(res, '下半句');
+        res.write('data: [DONE]\n\n');
+        res.end();
+      };
+    });
+
+    const res = await callerRequest(s, { messages: [{ role: 'user', content: '抢答' }], stream: true });
+    const sse = readSse(res);
+    await waitFor(() => sse.progress().includes('上半句'));
+    await waitFor(() => s.queue.listPending().length === 1);
+    const job = s.queue.listPending()[0]!;
+
+    const reply = await fetchJson<{ error: string }>(`${s.base}/admin/api/jobs/${job.id}/reply`, {
+      method: 'POST',
+      headers: jsonHeaders(cookie),
+      body: JSON.stringify({ content: '人工内容' }),
+    });
+    expect(reply.status).toBe(409);
+    expect(reply.body.error).toBe('forward_in_progress');
+
+    release!();
+    const text = await sse.done;
+    const deltas = [...text.matchAll(/"delta":\{"content":"([^"]*)"\}/g)].map((m) => m[1]!);
+    expect(deltas.join('')).toBe('上半句下半句');
+    expect(text).not.toContain('人工内容');
+  });
+
+  it('转发出字后上游断开：调用方收到错误帧，Job 取消而不是留成 pending', async () => {
+    const s = await boot();
+    const upstream = await bootUpstream();
+    const cookie = await login(s);
+    const provider = await createProvider(s, cookie, upstream);
+    await patchSettings(s, cookie, { autoForwardEnabled: true, autoForwardProviderId: provider.id });
+
+    upstream.setHandler((_req, res) => {
+      sseHeaders(res);
+      sseChunk(res, '说到一半');
+      setTimeout(() => res.destroy(), 30);
+    });
+
+    const res = await callerRequest(s, { messages: [{ role: 'user', content: '会断' }], stream: true });
+    const text = await readSse(res).done;
+    expect(text).toContain('说到一半');
+    expect(text).toContain('"code":"upstream_error"');
+    expect(text).not.toContain('[DONE]');
+
+    // 正文已经发出去了，人工回复不再有意义：Job 必须收尾，不能挂着等超时
+    await waitFor(() => s.queue.listPending().length === 0);
+    const row = s.db.prepare('SELECT status, forward_error FROM jobs WHERE id = ?').get(
+      (s.db.prepare('SELECT id FROM jobs ORDER BY created_at DESC LIMIT 1').get() as { id: string }).id,
+    ) as { status: string; forward_error: string | null };
+    expect(row.status).toBe('cancelled');
+    expect(row.forward_error).not.toBeNull();
   });
 });

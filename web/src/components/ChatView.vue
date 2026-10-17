@@ -15,6 +15,7 @@ const listEl = ref<HTMLElement | null>(null);
 const selectedProviderId = ref('');
 const forwarding = ref(false);
 const forwardError = ref('');
+const replyError = ref('');
 const providerIds = computed(() => state.providers.map((p) => p.id).join(','));
 
 /** 默认选中自动转发配置的厂商；它被删掉时回落到第一个 */
@@ -35,6 +36,7 @@ watch(
   () => pendingJob.value?.id,
   () => {
     forwardError.value = '';
+    replyError.value = '';
   },
 );
 
@@ -65,7 +67,9 @@ watch(
 );
 
 async function onSend(text: string): Promise<void> {
-  if (pendingJob.value !== null) await reply(text);
+  if (pendingJob.value === null) return;
+  const res = await reply(text);
+  replyError.value = res?.error ?? '';
 }
 
 function senderLabel(m: ThreadDetail['messages'][number]): string {
@@ -136,6 +140,8 @@ function senderLabel(m: ThreadDetail['messages'][number]): string {
       </div>
       <div v-if="forwardErrorText !== ''" class="forward-error-row">{{ forwardErrorText }}</div>
     </template>
+
+    <div v-if="replyError !== ''" class="forward-error-row">{{ replyError }}</div>
 
     <div class="composer-wrap">
       <Composer

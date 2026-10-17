@@ -266,6 +266,15 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: ServerContext): v
       | undefined;
     if (row === undefined) return reply.code(404).send({ error: 'not_found' });
 
+    // 已经实时吐字给调用方后不能再切人工：半截正文收不回来，拼接人工内容只会得到坏响应。
+    // 等这轮流式结束（通常只剩几秒）再回复，或先「忽略」。
+    const liveJob = ctx.queue.get(id);
+    if (liveJob !== null && liveJob.hasStreamed()) {
+      return reply
+        .code(409)
+        .send({ error: 'forward_in_progress', message: 'AI 正在流式回复，请等它结束或先忽略这个请求' });
+    }
+
     if (ctx.queue.reply(id, content)) {
       // 正常送达：这里**不**落库。queue.reply() 会唤醒正在等待的 serveNonStream/serveStream，
       // 由它们的 onDelivered 回调统一写入——那才是"回复确实发给了调用方"的判定点。

@@ -140,13 +140,17 @@ export async function deleteThread(id: string): Promise<void> {
   await refreshThreads();
 }
 
-/** 回复当前会话最新的挂起请求 */
-export async function reply(content: string): Promise<{ delivered: boolean } | null> {
+/** 回复当前会话最新的挂起请求。AI 正在流式回复时服务端会拒绝，错误交给界面展示。 */
+export async function reply(content: string): Promise<{ delivered: boolean; error?: string } | null> {
   const job = state.detail?.pendingJobs.at(-1);
   if (job === undefined) return null;
-  const res = await api.reply(job.id, content);
-  await Promise.all([refreshDetail(), refreshThreads()]);
-  return { delivered: res.delivered };
+  try {
+    const res = await api.reply(job.id, content);
+    await Promise.all([refreshDetail(), refreshThreads()]);
+    return { delivered: res.delivered };
+  } catch (err) {
+    return { delivered: false, error: apiErrorMessage(err, '回复失败') };
+  }
 }
 
 export async function ignoreJob(jobId: string): Promise<void> {

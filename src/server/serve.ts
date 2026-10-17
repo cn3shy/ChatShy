@@ -29,6 +29,8 @@ export interface StreamRenderer {
   ping: string;
   /** 超时/被取代时的收尾错误帧 */
   error: string;
+  /** 已经实时吐出部分正文后上游失败时的错误帧；缺省回退到 error（超时帧） */
+  failure?(): string;
   /** 心跳间隔毫秒，默认 15 秒 */
   pingMs?: number;
 }
@@ -142,7 +144,7 @@ async function typeOut(
   }
 }
 
-/** 流式：立即建 SSE 连接，心跳保活，回复/超时后按协议收尾并关闭 */
+/** 流式：立即建 SSE 连接，心跳保活；转发层吐字时实时下发，人工回复仍走打字机 */
 export async function serveStream(opts: {
   reply: FastifyReply;
   queue: JobQueue;
@@ -159,36 +161,74 @@ export async function serveStream(opts: {
   raw.write(renderer.initial);
 
   let finished = false;
-  const pingTimer = setInterval(() => {
+  let openSent = false;
+
+  const write = (frame: string): boolean => {
+    if (frame === '') return true;
+    if (finished) return false;
     try {
-      raw.write(renderer.ping);
+      raw.write(frame);
+      return true;
     } catch {
-      /* 连接已断，close 事件会清理 */
+      return false;
     }
-  }, renderer.pingMs ?? 15_000);
+  };
+
+  const endStream = (): void => {
+    if (finished) return;
+    finished = true;
+    clearInterval(pingTimer);
+    try {
+      raw.end();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const pingTimer = setInterval(() => write(renderer.ping), renderer.pingMs ?? 15_000);
 
   raw.on('close', () => {
     if (!finished) queue.cancel(job.id); // 调用方断开
   });
 
+  // 必须在 job.wait() 之前注册：自动转发可能在路由返回前就开始吐字，
+  // 通道晚一步注册就会丢掉最早几段（而剩余部分照常流出，客户端看到的是缺头的内容）。
+  // 上游吐过字后收尾不再走打字机，否则正文会重复。
+  const detach = job.attachStreamSink({
+    delta(text) {
+      if (finished || text === '') return;
+      if (!openSent) openSent = write(renderer.open);
+      write(renderer.delta(text));
+    },
+    fail() {
+      if (finished) return;
+      // 连接即将关闭，这个 Job 不会再有可送达的人工回复
+      queue.cancel(job.id);
+      write(renderer.failure?.() ?? renderer.error);
+      endStream();
+    },
+  });
+
   const outcome = await job.wait();
-  finished = true;
+  detach();
   clearInterval(pingTimer);
 
   if (outcome.kind === 'replied') {
     // 先落库再吐字：入库判定"回复确实发给了调用方"，与吐字快慢无关
     opts.onDelivered(outcome.content);
-    await typeOut(raw, renderer, outcome.content, opts.typewriterTickMs ?? TYPEWRITER_TICK_MS);
-  } else if (outcome.kind === 'timeout' || outcome.kind === 'superseded') {
-    try {
-      raw.write(renderer.error);
-    } catch {
-      /* ignore */
+    if (job.hasStreamed()) {
+      // 正文已经随上游实时下发，这里只补协议收尾
+      if (!openSent) openSent = write(renderer.open);
+      for (const frame of renderer.finish(outcome.content)) write(frame);
+    } else {
+      // 人工回复 / 上游没开流：整段已知，按打字机补发
+      await typeOut(raw, renderer, outcome.content, opts.typewriterTickMs ?? TYPEWRITER_TICK_MS);
     }
-  }
-  try {
-    raw.end();
-  } catch {
-    /* ignore */
+    endStream();
+  } else if (outcome.kind === 'timeout' || outcome.kind === 'superseded') {
+    write(renderer.error);
+    endStream();
+  } else {
+    endStream(); // cancelled：连接已断开
   }
 }

@@ -35,6 +35,16 @@ export interface PendingJobInit {
   deadlineAt: number;
 }
 
+/**
+ * 流式调用方（serveStream）注册的实时下发通道。
+ * 转发层每从上游拿到一段正文就立刻推给调用方，不必等整段生成完。
+ */
+export interface JobStreamSink {
+  delta(text: string): void;
+  /** 已经吐出过部分正文后上游失败：发错误帧并结束连接 */
+  fail(): void;
+}
+
 export class PendingJob {
   readonly id: string;
   readonly threadId: string;
@@ -46,6 +56,8 @@ export class PendingJob {
   _timer: NodeJS.Timeout | null = null;
   private _resolve!: (outcome: JobOutcome) => void;
   private readonly _promise: Promise<JobOutcome>;
+  private _streamSink: JobStreamSink | null = null;
+  private _streamed = false;
 
   constructor(init: PendingJobInit) {
     this.id = init.id;
@@ -61,6 +73,40 @@ export class PendingJob {
   /** 等待最终结局；回答或超时后兑现，恰好一次 */
   wait(): Promise<JobOutcome> {
     return this._promise;
+  }
+
+  /** 注册实时下发通道（一个 Job 至多一个调用方连接）；返回注销函数 */
+  attachStreamSink(sink: JobStreamSink): () => void {
+    this._streamSink = sink;
+    return () => {
+      if (this._streamSink === sink) this._streamSink = null;
+    };
+  }
+
+  /**
+   * 转发层把上游增量实时推给调用方。
+   * Job 已结束或调用方不是流式（没有 sink）时返回 false，此时内容只能走最后的整段回复。
+   */
+  pushDelta(text: string): boolean {
+    if (this.status !== 'pending' || this._streamSink === null) return false;
+    // 先标记再写：即使写失败（连接刚断），收尾也不能再走打字机补发一遍
+    this._streamed = true;
+    this._streamSink.delta(text);
+    return true;
+  }
+
+  /** 已吐出部分正文后上游失败：交给 serveStream 发错误帧、结束连接并取消 Job */
+  failStream(): void {
+    if (this.status !== 'pending' || this._streamSink === null) return;
+    this._streamSink.fail();
+  }
+
+  /**
+   * 是否已经实时向调用方吐出过正文。
+   * 一旦为 true，人工回复不能再抢占——调用方那边已经收到了半截内容，无法撤回。
+   */
+  hasStreamed(): boolean {
+    return this._streamed;
   }
 
   /** @internal 仅由 JobQueue 调用 */

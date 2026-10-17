@@ -8,6 +8,7 @@ import {
   completionFinishFrames,
   completionRoleFrame,
   newCompletionId,
+  openaiError,
   openaiErrors,
   parseOpenAIRequest,
   renderCompletion,
@@ -46,8 +47,6 @@ export function registerOpenAIRoutes(app: FastifyInstance, ctx: ServerContext): 
       timeoutMs: getDefaultTimeoutMs(ctx.db),
     });
     linkLatestUserMessageToJob(ctx.db, thread.id, job.id);
-    // 自动转发在服务端继续跑：操作台关掉/断网也不影响
-    maybeAutoForward(ctx, job, parsed.value.prompt);
 
     const id = newCompletionId();
     const created = Math.floor(Date.now() / 1000);
@@ -59,7 +58,9 @@ export function registerOpenAIRoutes(app: FastifyInstance, ctx: ServerContext): 
     };
 
     if (parsed.value.stream) {
-      await serveStream({
+      // 先让 serveStream 注册好实时下发通道，再启动自动转发：
+      // 反过来的话，自动转发可能在通道就位前就吐出最早几段。
+      const serving = serveStream({
         reply,
         queue: ctx.queue,
         job,
@@ -81,12 +82,18 @@ export function registerOpenAIRoutes(app: FastifyInstance, ctx: ServerContext): 
             }),
           ping: SSE_PING_COMMENT,
           error: sseFrame(openaiErrors.timeout()),
+          failure: () =>
+            sseFrame(openaiError('The upstream model failed while generating a response.', 'server_error', 'upstream_error')),
           pingMs: ctx.ssePingMs,
         },
       });
+      // 自动转发在服务端继续跑：操作台关掉/断网也不影响
+      maybeAutoForward(ctx, job, parsed.value.prompt);
+      await serving;
       return reply;
     }
 
+    maybeAutoForward(ctx, job, parsed.value.prompt);
     await serveNonStream({
       reply,
       queue: ctx.queue,

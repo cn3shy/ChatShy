@@ -241,7 +241,10 @@ export function toPublicProvider(provider: Provider): PublicProvider {
 
 // ---- 上游调用 ----
 
-/** 单次上游调用预算。取值低于常见反代的 60 秒读超时，避免"管理端报错、后端随后成功"的错觉 */
+/**
+ * 非流式调用的总预算 / 流式调用的空闲预算（连续无数据多久算失败）。
+ * 取值低于常见反代的 60 秒读超时，避免"管理端报错、后端随后成功"的错觉。
+ */
 export const PROVIDER_TIMEOUT_MS = 60_000;
 
 export type ProviderErrorCode =
@@ -322,6 +325,38 @@ export function providerMessages(prompt: Prompt): { role: string; content: strin
   return messages;
 }
 
+/** 从非流式响应体里取正文；格式不对/内容为空时抛 ProviderError */
+function completionFromJson(text: string): string {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new ProviderError('upstream_bad_response', '上游返回的不是 JSON（检查接口地址是否指向 OpenAI 兼容服务）');
+  }
+
+  const choices = (data as { choices?: unknown } | null)?.choices;
+  const first = Array.isArray(choices) ? (choices[0] as { message?: { content?: unknown } } | undefined) : undefined;
+  const content = contentToString(first?.message?.content);
+  if (content.trim() === '') {
+    throw new ProviderError('upstream_empty', '上游返回了空内容');
+  }
+  return content;
+}
+
+/** 流式数据块里夹带的错误对象（有的兼容端点用 200 + error 事件报错） */
+function upstreamStreamError(data: unknown): string | null {
+  if (data === null || typeof data !== 'object') return null;
+  const raw = (data as { error?: unknown }).error;
+  if (raw === undefined || raw === null) return null;
+  const message =
+    typeof raw === 'string'
+      ? raw
+      : typeof (raw as { message?: unknown }).message === 'string'
+        ? (raw as { message: string }).message
+        : '上游在流式响应中返回错误';
+  return sanitizeErrorText(message, 300);
+}
+
 /**
  * 调用上游并返回正文。不做自动重试：重试会重复计费，而且自动转发模式下
  * "失败转人工"比"悄悄换一条路"更可预测。
@@ -383,18 +418,174 @@ export async function callProvider(
     throw new ProviderError('upstream_unreachable', `读取上游响应失败：${detail}`);
   }
 
-  let data: unknown;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new ProviderError('upstream_bad_response', '上游返回的不是 JSON（检查接口地址是否指向 OpenAI 兼容服务）');
-  }
+  return completionFromJson(text);
+}
 
-  const choices = (data as { choices?: unknown } | null)?.choices;
-  const first = Array.isArray(choices) ? (choices[0] as { message?: { content?: unknown } } | undefined) : undefined;
-  const content = contentToString(first?.message?.content);
-  if (content.trim() === '') {
-    throw new ProviderError('upstream_empty', '上游返回了空内容');
+export interface StreamProviderOptions extends CallProviderOptions {
+  /** 每收到一段正文就回调一次；调用方负责决定要不要转发给终端用户 */
+  onDelta(text: string): void;
+}
+
+/**
+ * 流式调用上游（OpenAI 兼容 SSE），边读边回调，结束时返回完整正文。
+ *
+ * 与 callProvider 的两点差异：
+ *  - 超时是**空闲超时**：每读到一块数据就重新计时。整段生成的耗时可能远超 60 秒，
+ *    但连续 60 秒没有任何数据基本可以断定上游已经卡死；
+ *  - 同样不做自动重试（会重复计费）。
+ */
+export async function callProviderStream(
+  provider: Provider,
+  prompt: Prompt,
+  opts: StreamProviderOptions,
+): Promise<string> {
+  const timeoutMs = opts.timeoutMs ?? PROVIDER_TIMEOUT_MS;
+  const idleController = new AbortController();
+  const signal =
+    opts.signal === undefined ? idleController.signal : AbortSignal.any([opts.signal, idleController.signal]);
+
+  let idleTimedOut = false;
+  let idleTimer: NodeJS.Timeout | null = null;
+  const armIdleTimer = (): void => {
+    if (idleTimer !== null) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      idleTimedOut = true;
+      idleController.abort();
+    }, timeoutMs);
+    idleTimer.unref?.();
+  };
+  const abortError = (): ProviderError =>
+    idleTimedOut
+      ? new ProviderError('upstream_timeout', `上游 ${Math.round(timeoutMs / 1000)} 秒内没有新数据`)
+      : new ProviderError('upstream_aborted', '上游调用已中止');
+
+  armIdleTimer();
+  try {
+    let res: Response;
+    try {
+      res = await fetch(`${provider.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'text/event-stream',
+          authorization: `Bearer ${provider.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          messages: providerMessages(prompt),
+          stream: true,
+        }),
+        // 不让带 Authorization 的请求跟随跳转，也避免被重定向到意外主机
+        redirect: 'error',
+        signal,
+      });
+    } catch (err) {
+      if (signal.aborted) throw abortError();
+      const detail = err instanceof Error ? sanitizeErrorText(err.message, 200) : '未知错误';
+      throw new ProviderError('upstream_unreachable', `无法连接上游：${detail}`);
+    }
+
+    if (!res.ok) {
+      let body = '';
+      try {
+        body = await res.text();
+      } catch {
+        /* 读不出错误体就只报状态码 */
+      }
+      throw new ProviderError('upstream_http_error', upstreamErrorMessage(res.status, body), res.status);
+    }
+
+    // 有的"兼容"端点会忽略 stream=true 直接回 JSON：按非流式响应解析，再一次性下发
+    const contentType = (res.headers.get('content-type') ?? '').toLowerCase();
+    if (contentType.includes('application/json')) {
+      let text: string;
+      try {
+        text = await res.text();
+      } catch (err) {
+        if (signal.aborted) throw abortError();
+        const detail = err instanceof Error ? sanitizeErrorText(err.message, 200) : '未知错误';
+        throw new ProviderError('upstream_unreachable', `读取上游响应失败：${detail}`);
+      }
+      const content = completionFromJson(text);
+      opts.onDelta(content);
+      return content;
+    }
+
+    const reader = res.body?.getReader();
+    if (reader === undefined) {
+      throw new ProviderError('upstream_bad_response', '上游没有返回可读取的响应体');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let content = '';
+    let streamDone = false;
+
+    const handleLine = (rawLine: string): void => {
+      const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+      if (!line.startsWith('data:')) return; // 空行 / 注释 / event: 行一律忽略
+      const payload = line.slice(5).trim();
+      if (payload === '') return;
+      if (payload === '[DONE]') {
+        streamDone = true;
+        return;
+      }
+
+      let data: unknown;
+      try {
+        data = JSON.parse(payload);
+      } catch {
+        throw new ProviderError('upstream_bad_response', '上游流式响应的数据不是合法 JSON');
+      }
+      const errorMessage = upstreamStreamError(data);
+      if (errorMessage !== null) {
+        throw new ProviderError('upstream_http_error', errorMessage);
+      }
+
+      const choices = (data as { choices?: unknown } | null)?.choices;
+      const first = Array.isArray(choices)
+        ? (choices[0] as { delta?: { content?: unknown } } | undefined)
+        : undefined;
+      const text = contentToString(first?.delta?.content);
+      if (text !== '') {
+        content += text;
+        opts.onDelta(text);
+      }
+    };
+
+    try {
+      while (!streamDone) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        armIdleTimer();
+        buffer += decoder.decode(value, { stream: true });
+        let newline = buffer.indexOf('\n');
+        while (!streamDone && newline >= 0) {
+          const line = buffer.slice(0, newline);
+          buffer = buffer.slice(newline + 1);
+          handleLine(line);
+          newline = buffer.indexOf('\n');
+        }
+      }
+      if (!streamDone && buffer !== '') {
+        buffer += decoder.decode();
+        handleLine(buffer);
+      }
+    } catch (err) {
+      if (err instanceof ProviderError) throw err;
+      if (signal.aborted) throw abortError();
+      const detail = err instanceof Error ? sanitizeErrorText(err.message, 200) : '未知错误';
+      throw new ProviderError('upstream_unreachable', `读取上游流式响应失败：${detail}`);
+    } finally {
+      // 见到 [DONE] 后主动放掉连接，不等上游自己关
+      if (streamDone) void reader.cancel().catch(() => undefined);
+    }
+
+    if (content.trim() === '') {
+      throw new ProviderError('upstream_empty', '上游返回了空内容');
+    }
+    return content;
+  } finally {
+    if (idleTimer !== null) clearTimeout(idleTimer);
   }
-  return content;
 }

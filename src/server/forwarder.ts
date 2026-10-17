@@ -2,6 +2,7 @@ import type { PendingJob } from '../core/jobs.js';
 import {
   ProviderError,
   callProvider,
+  callProviderStream,
   getProvider,
   type Provider,
 } from '../core/providers.js';
@@ -114,7 +115,18 @@ async function runForward(
   });
 
   try {
-    const content = await callProvider(provider, prompt, { signal: controller.signal });
+    // 调用方要流式就透传流式：上游每吐一段就推给调用方，首字延迟与直连厂商一致。
+    // 非流式调用方仍用普通请求（反正要等全文，也避免无谓的 SSE 解析）。
+    const content =
+      job.mode === 'stream'
+        ? await callProviderStream(provider, prompt, {
+            signal: controller.signal,
+            onDelta: (text) => {
+              // Job 已结束（调用方断开/被人工抢先等）时静默丢弃，不再往已关闭的连接写
+              job.pushDelta(text);
+            },
+          })
+        : await callProvider(provider, prompt, { signal: controller.signal });
     if (jobEnded || job.status !== 'pending') {
       return { kind: 'job_ended', providerName: provider.name, status: job.status };
     }
@@ -140,6 +152,9 @@ async function runForward(
     }
     const message = err instanceof ProviderError ? err.message : '转发失败：未知错误';
     recordForwardError(ctx.db, job, provider, message);
+    // 已经吐出部分正文后再失败：调用方那边无法"无缝续写"，只能发错误帧收尾。
+    // failStream 会取消 Job（连接已结束，留着 pending 也没有可送达的回复了）。
+    if (job.hasStreamed()) job.failStream();
     if (source === 'auto') {
       // 自动模式保持 pending，操作台据此知道"为什么这条请求还挂着"
       ctx.hub.broadcast({

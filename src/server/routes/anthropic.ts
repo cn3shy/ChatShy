@@ -3,6 +3,7 @@ import { getDefaultTimeoutMs, getModelName } from '../../core/settings.js';
 import { requestSource } from '../../core/source.js';
 import { appendMessage, linkLatestUserMessageToJob, resolveThread } from '../../core/threads.js';
 import {
+  anthropicError,
   anthropicErrors,
   anthropicPingFrame,
   eventFrame,
@@ -49,8 +50,6 @@ export function registerAnthropicRoutes(app: FastifyInstance, ctx: ServerContext
       timeoutMs: getDefaultTimeoutMs(ctx.db),
     });
     linkLatestUserMessageToJob(ctx.db, thread.id, job.id);
-    // 自动转发在服务端继续跑：操作台关掉/断网也不影响
-    maybeAutoForward(ctx, job, parsed.value.prompt);
 
     const id = newMessageId();
     const promptTokens = estimateTokens(
@@ -61,7 +60,8 @@ export function registerAnthropicRoutes(app: FastifyInstance, ctx: ServerContext
     };
 
     if (parsed.value.stream) {
-      await serveStream({
+      // 先让 serveStream 注册好实时下发通道，再启动自动转发（原因见 openai.ts 同名分支）
+      const serving = serveStream({
         reply,
         queue: ctx.queue,
         job,
@@ -81,12 +81,18 @@ export function registerAnthropicRoutes(app: FastifyInstance, ctx: ServerContext
             }),
           ping: anthropicPingFrame(),
           error: eventFrame('error', anthropicErrors.timeout()),
+          failure: () =>
+            eventFrame('error', anthropicError('api_error', 'Upstream model failed while generating a response.')),
           pingMs: ctx.ssePingMs,
         },
       });
+      // 自动转发在服务端继续跑：操作台关掉/断网也不影响
+      maybeAutoForward(ctx, job, parsed.value.prompt);
+      await serving;
       return reply;
     }
 
+    maybeAutoForward(ctx, job, parsed.value.prompt);
     await serveNonStream({
       reply,
       queue: ctx.queue,
