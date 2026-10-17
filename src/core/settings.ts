@@ -5,6 +5,8 @@ export const SETTING_DEFAULT_TIMEOUT_MS = 'default_timeout_ms';
 export const SETTING_MODEL_NAME = 'model_name';
 export const SETTING_ADMIN_PASSWORD_HASH = 'admin_password_hash';
 export const SETTING_CALLER_KEY = 'caller_key';
+export const SETTING_AUTO_FORWARD_ENABLED = 'auto_forward_enabled';
+export const SETTING_AUTO_FORWARD_PROVIDER_ID = 'auto_forward_provider_id';
 
 /** 调用方 Key 前缀，与 OpenAI 生态的习惯保持一致 */
 export const CALLER_KEY_PREFIX = 'sk-chatshy-';
@@ -37,6 +39,28 @@ export function getDefaultTimeoutMs(db: Db, fallback = 180_000): number {
 
 export function getModelName(db: Db, fallback = 'chatshy'): string {
   return getSetting(db, SETTING_MODEL_NAME) ?? fallback;
+}
+
+// ---- 自动转发 ----
+//
+// 开关落库而不是放内存：用户关掉操作台/重启服务后仍要保持"自动转发"状态，
+// 这正是这个功能存在的意义（人不在线也能用）。
+
+export function isAutoForwardEnabled(db: Db): boolean {
+  return getSetting(db, SETTING_AUTO_FORWARD_ENABLED) === '1';
+}
+
+/** 自动转发使用的厂商 id；空串 = 尚未选择 */
+export function getAutoForwardProviderId(db: Db): string {
+  return getSetting(db, SETTING_AUTO_FORWARD_PROVIDER_ID) ?? '';
+}
+
+export function setAutoForwardEnabled(db: Db, enabled: boolean): void {
+  setSetting(db, SETTING_AUTO_FORWARD_ENABLED, enabled ? '1' : '0');
+}
+
+export function setAutoForwardProviderId(db: Db, providerId: string): void {
+  setSetting(db, SETTING_AUTO_FORWARD_PROVIDER_ID, providerId);
 }
 
 // ---- 调用方 Key（全局唯一，所有调用方共用）----

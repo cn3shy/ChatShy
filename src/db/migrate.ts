@@ -101,6 +101,32 @@ DROP TABLE keys;
 -- 4) 新索引：会话归并按来源指纹查候选集
 CREATE INDEX IF NOT EXISTS idx_threads_source ON threads(source_fingerprint, updated_at);
 `,
+
+  // 迁移 3：多厂商 AI 转发
+  //
+  // providers 存管理员配置的上游（OpenAI 兼容接口）。api_key 明文存储是刻意的，
+  // 与 caller_key 同属"数据库文件即信任边界"的取舍；管理端接口只回掩码。
+  //
+  // jobs 上的四列只做审计与失败可观测，不改变回复落库路径：
+  //  - via             成功回复的厂商名快照（厂商改名/删除后历史仍可读）
+  //  - provider_id     触发该回复的厂商 id（不加外键，避免厂商生命周期影响历史）
+  //  - forward_error*  最近一次自动/手动转发失败原因与时间，供待回复条展示
+  `
+CREATE TABLE IF NOT EXISTS providers (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL UNIQUE,
+  base_url   TEXT NOT NULL,
+  api_key    TEXT NOT NULL,
+  model      TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+ALTER TABLE jobs ADD COLUMN via              TEXT;
+ALTER TABLE jobs ADD COLUMN provider_id      TEXT;
+ALTER TABLE jobs ADD COLUMN forward_error    TEXT;
+ALTER TABLE jobs ADD COLUMN forward_error_at INTEGER;
+`,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

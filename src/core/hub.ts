@@ -5,10 +5,18 @@ export interface HubClient {
 }
 
 /**
- * 广播到操作台的事件。JobEvent 是主体；thread.deleted 不属于 Job 的生命周期，
- * 但同样需要让其它开着的操作台把那条会话从列表里去掉。
+ * 广播到操作台的事件。JobEvent 是主体；其余事件不属于 Job 的生命周期，
+ * 但同样需要其它开着的操作台刷新状态：
+ * - thread.deleted    把那条会话从列表里去掉
+ * - job.forward_failed 自动转发失败，请求已留在 pending 等人工（提示 + 展示原因）
+ * - settings.updated / providers.updated  多开操作台时同步开关与厂商列表
  */
-export type HubEvent = JobEvent | { type: 'thread.deleted'; threadId: string };
+export type HubEvent =
+  | JobEvent
+  | { type: 'thread.deleted'; threadId: string }
+  | { type: 'job.forward_failed'; jobId: string; threadId: string; message: string }
+  | { type: 'settings.updated' }
+  | { type: 'providers.updated' };
 
 /**
  * 操作台实时通道（设计 §5.4）：向所有在线管理端 SSE 连接广播事件。

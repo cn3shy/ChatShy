@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import { renderMarkdown } from '../markdown';
-import { ignoreJob, remainingSeconds, reply } from '../store';
+import { forwardJob, ignoreJob, remainingSeconds, reply, state } from '../store';
 import type { ThreadDetail } from '../types';
 import Composer from './Composer.vue';
 
@@ -12,6 +12,47 @@ const pendingCount = computed(() => props.detail.pendingJobs.length);
 const canReply = computed(() => pendingJob.value !== null);
 
 const listEl = ref<HTMLElement | null>(null);
+const selectedProviderId = ref('');
+const forwarding = ref(false);
+const forwardError = ref('');
+const providerIds = computed(() => state.providers.map((p) => p.id).join(','));
+
+/** 默认选中自动转发配置的厂商；它被删掉时回落到第一个 */
+watch(
+  [providerIds, () => state.settings?.autoForwardProviderId],
+  () => {
+    if (state.providers.some((p) => p.id === selectedProviderId.value)) return;
+    const autoId = state.settings?.autoForwardProviderId ?? '';
+    selectedProviderId.value = state.providers.some((p) => p.id === autoId)
+      ? autoId
+      : (state.providers[0]?.id ?? '');
+  },
+  { immediate: true },
+);
+
+// 换了一个待回复请求就清掉上一条的手动转发错误
+watch(
+  () => pendingJob.value?.id,
+  () => {
+    forwardError.value = '';
+  },
+);
+
+const forwardErrorText = computed(() => {
+  if (forwardError.value !== '') return forwardError.value;
+  const autoError = pendingJob.value?.forwardError ?? '';
+  return autoError === '' ? '' : `最近一次自动转发失败：${autoError}`;
+});
+
+async function onForward(): Promise<void> {
+  const job = pendingJob.value;
+  if (job === null || selectedProviderId.value === '' || forwarding.value) return;
+  forwarding.value = true;
+  forwardError.value = '';
+  const res = await forwardJob(job.id, selectedProviderId.value);
+  forwarding.value = false;
+  if (!res.ok) forwardError.value = res.error ?? '转发失败';
+}
 
 watch(
   () => [props.detail.messages.length, props.detail.pendingJobs.length, props.detail.thread.id],
@@ -29,7 +70,7 @@ async function onSend(text: string): Promise<void> {
 
 function senderLabel(m: ThreadDetail['messages'][number]): string {
   if (m.role === 'user') return `调用方 · ${props.detail.thread.sourceClient || '未知来源'}`;
-  if (m.role === 'assistant') return '我（操作员）';
+  if (m.role === 'assistant') return m.via !== '' ? `AI · ${m.via}` : '我（操作员）';
   return 'System';
 }
 </script>
@@ -69,16 +110,32 @@ function senderLabel(m: ThreadDetail['messages'][number]): string {
       </div>
     </div>
 
-    <div v-if="pendingJob !== null" class="pending-bar">
-      <span class="pulse"></span>
-      <span>
-        正在等待你的回复… 剩余 <b>{{ remainingSeconds(pendingJob.deadlineAt, now) }}</b> 秒
-        <template v-if="pendingCount > 1">
-          （有 {{ pendingCount }} 个重复挂起请求，回复将发给最新的一个）
-        </template>
-      </span>
-      <button class="ghost-btn" @click="ignoreJob(pendingJob.id)">忽略</button>
-    </div>
+    <template v-if="pendingJob !== null">
+      <div class="pending-bar">
+        <span class="pulse"></span>
+        <span class="pending-status">
+          正在等待你的回复… 剩余 <b>{{ remainingSeconds(pendingJob.deadlineAt, now) }}</b> 秒
+          <template v-if="pendingCount > 1">
+            （有 {{ pendingCount }} 个重复挂起请求，回复将发给最新的一个）
+          </template>
+        </span>
+        <div v-if="state.providers.length > 0" class="forward-controls">
+          <select v-model="selectedProviderId" class="provider-select" :disabled="forwarding">
+            <option v-for="p in state.providers" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+          <button
+            class="ghost-btn small ai-reply-btn"
+            :disabled="forwarding || selectedProviderId === ''"
+            :title="'调用所选厂商并直接回复调用方'"
+            @click="onForward"
+          >
+            {{ forwarding ? '生成中…' : 'AI 回复' }}
+          </button>
+        </div>
+        <button class="ghost-btn ignore-btn" @click="ignoreJob(pendingJob.id)">忽略</button>
+      </div>
+      <div v-if="forwardErrorText !== ''" class="forward-error-row">{{ forwardErrorText }}</div>
+    </template>
 
     <div class="composer-wrap">
       <Composer

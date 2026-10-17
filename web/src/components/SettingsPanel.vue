@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { desktopEnabled, requestDesktopPermission, setDesktop, setSound, soundEnabled } from '../notify';
 import { regenerateKey, state, updateSettings } from '../store';
+import ProviderSettings from './ProviderSettings.vue';
 
 defineEmits<{ close: [] }>();
 
@@ -106,7 +107,7 @@ async function savePassword(): Promise<void> {
 
 <template>
   <div class="modal-mask" @click.self="$emit('close')">
-    <div class="modal">
+    <div class="modal wide">
       <header class="modal-head">
         <h2>设置</h2>
         <button class="icon-btn" @click="$emit('close')">✕</button>
@@ -132,6 +133,9 @@ async function savePassword(): Promise<void> {
         </div>
         <p v-if="configMsg" class="note">{{ configMsg }}</p>
         <p v-if="keyMsg" class="note">{{ keyMsg }}</p>
+
+        <h3>AI 厂商转发</h3>
+        <ProviderSettings />
 
         <h3>提醒</h3>
         <label class="check-row"
