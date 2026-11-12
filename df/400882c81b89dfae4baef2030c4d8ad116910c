@@ -1,0 +1,14 @@
+dounai/src/store.ts
+  h_8726ce48f1802a 56-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "df400882c81b89dfae4baef2030c4d8ad116910c",
+  "prompts": {},
+  "humans": {
+    "h_8726ce48f1802a": {
+      "author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
