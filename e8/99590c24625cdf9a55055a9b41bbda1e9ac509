@@ -1,0 +1,19 @@
+dounai/admin/style.css
+  s_ec960752ec6584::t_75dd7069ce433b 344-381
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e899590c24625cdf9a55055a9b41bbda1e9ac509",
+  "prompts": {},
+  "sessions": {
+    "s_ec960752ec6584": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce0f9ba7-735e-4de9-9f65-9685329b4066",
+        "model": "unknown"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
