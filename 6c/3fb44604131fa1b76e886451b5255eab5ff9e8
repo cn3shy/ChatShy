@@ -1,0 +1,38 @@
+package.json
+  s_ec960752ec6584::t_cd8b9dab9ef57e 6-8
+dounai/package.json
+  s_ec960752ec6584::t_87bf0e52ea62a2 12
+server-java/src/main/java/io/github/cn3shy/chatshy/web/PageController.java
+  s_ec960752ec6584::t_d46fc2bfc64551 30-31
+  s_ec960752ec6584::t_68eae49c5e173c 37,41
+dounai/tsconfig.json
+  s_ec960752ec6584::t_8d5c9ab8e60827 13
+dounai/admin.html
+  s_ec960752ec6584::t_7b173655de8a88 1-12
+.env.example
+  s_ec960752ec6584::t_d9713dc040408b 26-32
+docs/protocol.md
+  s_ec960752ec6584::t_fb86803b0132dd 1-170
+README.md
+  s_ec960752ec6584::t_6a7273835c3836 3,5,7,9,14,16-19,22-24,31-33,35-37,42,44-45,47-50,53,56-57,64,66,68-69,72,74,78,91,96-97,100-102,104,108,117-124,126,129,131-132,136,150
+dounai/vite.config.ts
+  s_ec960752ec6584::t_90e49edf197bf9 1,10,12,22-27
+dounai/pnpm-lock.yaml
+  s_ec960752ec6584::t_be560ae6915ff0 11-13,344-347,732-733
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c3fb44604131fa1b76e886451b5255eab5ff9e8",
+  "prompts": {},
+  "sessions": {
+    "s_ec960752ec6584": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce0f9ba7-735e-4de9-9f65-9685329b4066",
+        "model": "unknown"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
