@@ -1,0 +1,16 @@
+dounai/src/components/Sidebar.vue
+  h_8726ce48f1802a 59-65
+dounai/src/style.css
+  h_8726ce48f1802a 169-170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "97f7ed48fa3d9a0ba8113183a062cc6a84935e1e",
+  "prompts": {},
+  "humans": {
+    "h_8726ce48f1802a": {
+      "author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
