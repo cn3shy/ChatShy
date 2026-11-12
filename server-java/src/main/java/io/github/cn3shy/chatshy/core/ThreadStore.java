@@ -31,7 +31,7 @@ public class ThreadStore {
                                 List<ChatMessage> messages) {
     }
 
-    public record ResolveResult(ThreadRecord thread, List<MessageRecord> appended) {
+    public record ResolveResult(ThreadRecord thread, List<MessageRecord> appended, boolean created) {
     }
 
     private static final RowMapper<ThreadRecord> THREAD_MAPPER = (rs, i) -> new ThreadRecord(
@@ -95,7 +95,7 @@ public class ThreadStore {
                     matched.id(), matched.title(), matched.protocol(), matched.model(), matched.fingerprint(),
                     params.source().ip(), params.source().ua(), params.source().client(),
                     matched.sourceFingerprint(), matched.blacklisted(), matched.createdAt(), now);
-            return new ResolveResult(refreshed, appended);
+            return new ResolveResult(refreshed, appended, false);
         }
 
         String id = UUID.randomUUID().toString();
@@ -113,7 +113,7 @@ public class ThreadStore {
         }
         List<MessageRecord> appended = insertApiMessages(id, params.messages(), now);
         ThreadRecord thread = getThread(id);
-        return new ResolveResult(thread, appended);
+        return new ResolveResult(thread, appended, true);
     }
 
     public String contentFingerprint(String system, String firstUserContent) {

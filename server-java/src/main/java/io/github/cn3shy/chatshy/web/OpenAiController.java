@@ -63,13 +63,14 @@ public class OpenAiController {
         String model = value.prompt().model() == null || value.prompt().model().isEmpty()
                 ? settings.getModelName() : value.prompt().model();
         RequestSource source = SourceService.requestSource(request);
-        // IP 限流：时间窗内新建会话过多直接拒绝，防止换着会话刷 token
-        if (threads.newThreadLimitReached(source.ip())) {
+        ThreadStore.ResolveResult resolved = threads.resolve(new ThreadStore.ResolveParams(
+                source, ProtocolTypes.OPENAI, model, value.prompt().system(), value.prompt().messages()));
+        // IP 限流只针对新建会话：老会话正常聊天不受影响；超限则回滚刚建的会话再拒绝
+        if (resolved.created() && threads.newThreadLimitReached(source.ip())) {
+            threads.deleteThread(resolved.thread().id());
             HttpUtil.writeJson(response, 429, OpenAiProtocol.rateLimited());
             return;
         }
-        ThreadStore.ResolveResult resolved = threads.resolve(new ThreadStore.ResolveParams(
-                source, ProtocolTypes.OPENAI, model, value.prompt().system(), value.prompt().messages()));
         if (resolved.thread().blacklisted()) {
             HttpUtil.writeJson(response, 403, OpenAiProtocol.blacklisted());
             return;
