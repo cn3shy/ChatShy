@@ -27,18 +27,18 @@ public class PageController {
         ChatShyProperties.Dounai dounai = properties.dounai();
         boolean isDounai = dounai != null && dounai.enabled() && request.getLocalPort() == dounai.port();
         return serveIndex(isDounai, isDounai
-                ? "豆奶前端尚未构建：请先执行 npm run dounai:web:build"
-                : "操作台前端尚未构建：请先执行 npm run web:build");
+                ? "豆奶前端尚未构建：请先执行 pnpm -C dounai build"
+                : "操作台前端尚未构建：请先执行 pnpm -C dounai build");
     }
 
     /** 操作台页面：dounai.chat/admin 与 ai.3shy.cn/admin 共用同一个构建产物。 */
     @GetMapping({"/admin", "/admin/"})
     public ResponseEntity<?> admin() {
-        return serveIndex(false, "操作台前端尚未构建：请先执行 npm run web:build");
+        return serveIndex(false, "操作台前端尚未构建：请先执行 pnpm -C dounai build");
     }
 
     private ResponseEntity<?> serveIndex(boolean isDounai, String missingHint) {
-        Path index = Path.of(isDounai ? "dounai/dist/index.html" : "web/dist/index.html");
+        Path index = Path.of(isDounai ? "dounai/dist/index.html" : "dounai/dist/admin.html");
         if (!Files.isRegularFile(index)) {
             return ResponseEntity.status(503)
                     .cacheControl(org.springframework.http.CacheControl.noStore())

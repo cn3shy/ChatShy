@@ -3,10 +3,8 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "web:dev": "npm --prefix web run dev",
-    "web:build": "npm --prefix web run build",
-    "dounai:web:dev": "pnpm -C dounai dev",
-    "dounai:web:build": "pnpm -C dounai build",
-    "build:all": "npm run web:build && npm run dounai:web:build"
+    "web:dev": "pnpm -C dounai dev",
+    "web:build": "pnpm -C dounai build",
+    "build:all": "pnpm -C dounai build"
   }
 }

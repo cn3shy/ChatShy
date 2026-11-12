@@ -45,9 +45,6 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        registry.addResourceHandler("/assets/**")
-                .addResourceLocations(fileLocation("web/dist/assets"))
-                .setCacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable());
         registry.addResourceHandler("/dounai-assets/**")
                 .addResourceLocations(fileLocation("dounai/dist/dounai-assets"))
                 .setCacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable());
