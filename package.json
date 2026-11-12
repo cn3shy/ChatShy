@@ -14,7 +14,9 @@
     "test:watch": "vitest",
     "web:dev": "npm --prefix web run dev",
     "web:build": "npm --prefix web run build",
-    "build:all": "npm run web:build && npm run build"
+    "dounai:web:dev": "pnpm -C dounai dev",
+    "dounai:web:build": "pnpm -C dounai build",
+    "build:all": "npm run web:build && npm run dounai:web:build && npm run build"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.3",

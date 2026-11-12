@@ -3,6 +3,8 @@ import path from 'node:path';
 
 export interface Config {
   port: number;
+  /** 监听地址；默认 0.0.0.0，本机经 nginx 反代时可设 127.0.0.1 */
+  host: string;
   dbPath: string;
   adminPassword: string | null;
   /** 全局调用方 Key 的播种值；库里已有则忽略 */
@@ -52,6 +54,7 @@ function strEnv(name: string): string | null {
 
 export const config: Config = {
   port: intEnv('PORT', 8088),
+  host: strEnv('HOST') ?? '0.0.0.0',
   dbPath: strEnv('DB_PATH')
     ? path.resolve(process.cwd(), strEnv('DB_PATH')!)
     : path.resolve(process.cwd(), 'data', 'chatshy.db'),

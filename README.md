@@ -5,6 +5,26 @@
 - 设计文档：`docs/superpowers/specs/2026-10-16-chatshy-design.md`
 - 实现计划：`docs/superpowers/plans/2026-10-16-chatshy-implementation.md`
 
+## 运行形态（2026-11-12 起）
+
+后端已切换为 **Spring Boot 3.5.16 / JDK 21**，代码在 `server-java/`；Node 版 `src/` 保留用于回滚与对照。一个 Java 进程同时监听两个站点：
+
+| 端口 | 站点 | 内容 |
+| --- | --- | --- |
+| `127.0.0.1:8088` | `ai.3shy.cn` | 操作台 + OpenAI / Anthropic 网关 |
+| `127.0.0.1:8099` | `dounai.3shy.cn` / `dounai.chat` | 豆奶聊天页（Vite + Vue 3 + TypeScript） |
+
+- SQLite schema 与 Node 版完全兼容（`schema_version=3`），现有会话、调用方 Key、厂商配置直接沿用。
+- 豆奶源码在 `dounai/`，依赖用 **pnpm** 管理；操作台前端仍在 `web/`。
+- `dounai.service` 已移除，豆奶随 `chatshy.service` 一起启停。
+
+```
+server-java/   Spring Boot 后端（当前线上）
+dounai/        豆奶 Vite + Vue 前端
+web/           操作台 Vite + Vue 前端
+src/           Node 版后端（保留回滚/对照）
+```
+
 ## 功能
 
 - **双协议兼容**：`POST /v1/chat/completions`（OpenAI）与 `POST /v1/messages`（Anthropic），流式/非流式均可；Cherry Studio、ChatBox、LobeChat、官方 SDK、Claude Code 等直接接入
@@ -15,9 +35,35 @@
 - **请求挂起 + 可配置超时**：默认 180 秒（全局设置项）；超时返回各协议标准错误体
 - **第三方 AI 转发**：可配置多个 OpenAI 兼容厂商（DeepSeek、通义千问、GLM、任意自定义端点）。操作台对每个待回复请求可手动选择厂商「AI 回复」并直接回给调用方；侧边栏的「AI 自动转发」开关开启后，服务端会自动回复所有新请求——**操作台关掉/人不在线也继续生效**。流式调用方会收到上游的**实时增量**（首字延迟与直连厂商一致），不再等整段生成完再打字机补发。自动失败时请求留在待回复列表并标注原因
 - **会话归并**：无状态协议的多轮请求自动归并成一条会话线，**按来源隔离**（不同调用方绝不会串线）；超时后补的回复只存档并标注"未送达"
-- **单进程 + SQLite**：一个 Docker 镜像部署，数据一个文件备份
+- **豆奶页面**：独立的访客聊天页（`dounai/`），服务端已固定接入本网关，访客无需填写 API Key
+- **单进程 + SQLite**：Spring Boot 同进程托管操作台与豆奶，数据一个文件备份
 
 ## 本地开发
+
+### Java 版（当前线上）
+
+```bash
+cd server-java
+mvn test                 # 70 个 JUnit 用例
+mvn -DskipTests package  # 产物 target/chatshy-server.jar
+```
+
+运行（必须在 `/home/ChatShy` 下，才能找到 `web/dist`、`dounai/dist` 与 `.env`）：
+
+```bash
+java -jar server-java/target/chatshy-server.jar
+# 操作台 http://localhost:8088 ；豆奶 http://localhost:8099
+```
+
+豆奶前端（pnpm）：
+
+```bash
+pnpm -C dounai install
+pnpm -C dounai build     # 产物 dounai/dist，由 Spring Boot 托管
+pnpm -C dounai dev       # http://localhost:5174，/api 代理到 8099
+```
+
+### Node 版（保留作回滚）
 
 ```bash
 npm install          # 服务端依赖
@@ -31,7 +77,7 @@ npm run dev          # 服务端 + 操作台 → http://localhost:8088
 ```bash
 npm run build:all    # 前端 + 服务端生产构建
 npm start            # 运行生产产物
-npm test             # 单元 + 集成测试（98 个）
+npm test             # Node 版单元 + 集成测试
 ```
 
 ## 使用
@@ -132,6 +178,15 @@ X-ChatShy-Caller: alice
 
 > 这是调用方**自报**的身份，不是鉴权——它用来区分信任的同事，挡不住有人故意填别人的名字。
 
+## 本机 systemd 部署（当前）
+
+- systemd 单元：`/etc/systemd/system/chatshy.service`（`WorkingDirectory=/home/ChatShy`）
+- 构建：`cd /home/ChatShy/server-java && mvn -DskipTests package`
+- 启停：`systemctl restart chatshy`；日志：`journalctl -u chatshy -f`
+- 同一个 Java 进程监听 `8088` 与 `8099`，**不再有 `dounai.service`**
+- `.env` 由 Spring Boot 启动时自动加载；新增的可选变量见下表
+- 回滚备份：`/root/chatshy-java-rollback-2026-11-12/`（Node systemd 单元与说明）、`/home/ChatShy/data/chatshy.db.before-java-2026-11-12`
+
 ## 部署（VPS + Docker + Caddy 自动 HTTPS）
 
 1. 服务器装好 Docker 与 Compose；DNS 把你的域名解析到服务器
@@ -149,12 +204,19 @@ X-ChatShy-Caller: alice
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `PORT` | `8088` | 监听端口 |
+| `PORT` | `8088` | 网关/操作台监听端口 |
+| `HOST` | `0.0.0.0` | 监听地址；本机经 nginx 反代时设为 `127.0.0.1` |
 | `DB_PATH` | `./data/chatshy.db` | SQLite 文件路径（compose 里设为 `/data/chatshy.db`） |
 | `ADMIN_PASSWORD` | 随机生成并打印 | 管理员初始密码（库里已有密码哈希时忽略） |
 | `CALLER_KEY` | 随机生成并打印 | 全局调用方 Key（库里已有则忽略；之后可在设置页改） |
 | `DEFAULT_TIMEOUT_MS` | `180000` | 全局默认挂起超时（毫秒） |
 | `MODEL_NAME` | `chatshy` | `GET /v1/models` 展示的模型名 |
+| `DOUNAI_ENABLED` | `true` | 是否随服务启动豆奶站点 |
+| `DOUNAI_PORT` | `8099` | 豆奶监听端口 |
+| `DOUNAI_HOST` | `127.0.0.1` | 豆奶监听地址 |
+| `DOUNAI_CALLER` | `豆奶` | 豆奶在操作台的来源名 |
+| `DOUNAI_SYSTEM_PROMPT` | 空 | 豆奶每次请求前置的 system 提示词 |
+| `DOUNAI_UPSTREAM_BASE_URL` | `http://127.0.0.1:${PORT}/v1` | 豆奶转发的网关地址 |
 
 ## 备份
 
@@ -210,8 +272,12 @@ docker compose start chatshy
 ## 测试
 
 ```bash
+# Java 版（当前线上，70 个 JUnit 用例）
+cd server-java && mvn test
+
+# Node 版（保留）
 npm test
 ```
 
-- 单元测试：协议解析/渲染的 golden 断言、会话归并边界（含**来源隔离**）、来源识别与指纹稳定性、Job 状态机（假时钟）、密码与全局 Key、数据库迁移（含从旧版多 Key 库升级的数据保留）
-- 集成测试：进程内起真实 HTTP 服务，用官方 `openai` / `@anthropic-ai/sdk` 打全链路，脚本扮演操作员回复；覆盖流式、超时、断连、限额、管理端全流程
+- Java 单元/集成：协议 golden 断言、来源识别与指纹、会话归并、Job 状态机、SQLite 迁移（v1/v2 → v3）、厂商 CRUD、豆奶代理、SSE/打字机/超时/断连、手动与自动转发
+- Node 单元/集成：保留上游原有 vitest 套件，用于对照与回滚

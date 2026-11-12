@@ -20,7 +20,7 @@ const sessions = new SessionStore();
 const app = await buildServer({ db, queue, hub, sessions }, { logger: true });
 
 try {
-  await app.listen({ port: config.port, host: '0.0.0.0' });
+  await app.listen({ port: config.port, host: config.host });
 } catch (err) {
   app.log.error(err);
   process.exit(1);

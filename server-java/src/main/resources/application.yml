@@ -1,0 +1,48 @@
+# ChatShy Spring Boot 配置
+# .env 与 Node 版保持同一份（KEY=VALUE），存在时自动加载；环境变量优先级更高。
+spring:
+  application:
+    name: chatshy
+  config:
+    import: optional:file:./.env[.properties]
+  threads:
+    virtual:
+      enabled: true
+  jackson:
+    default-property-inclusion: always
+  datasource:
+    hikari:
+      maximum-pool-size: 1
+      minimum-idle: 1
+      idle-timeout: 0
+      max-lifetime: 0
+
+server:
+  port: ${PORT:8088}
+  address: ${HOST:0.0.0.0}
+  shutdown: immediate
+  forward-headers-strategy: none
+  tomcat:
+    max-connections: 8192
+
+chatshy:
+  db-path: ${DB_PATH:./data/chatshy.db}
+  admin-password: ${ADMIN_PASSWORD:}
+  caller-key: ${CALLER_KEY:}
+  default-timeout-ms: ${DEFAULT_TIMEOUT_MS:180000}
+  model-name: ${MODEL_NAME:chatshy}
+  sse-ping-ms: ${SSE_PING_MS:15000}
+  hub-ping-ms: ${HUB_PING_MS:20000}
+  typewriter-tick-ms: ${TYPEWRITER_TICK_MS:25}
+  dounai:
+    enabled: ${DOUNAI_ENABLED:true}
+    port: ${DOUNAI_PORT:8099}
+    host: ${DOUNAI_HOST:127.0.0.1}
+    caller: ${DOUNAI_CALLER:豆奶}
+    system-prompt: ${DOUNAI_SYSTEM_PROMPT:}
+    upstream-base-url: ${DOUNAI_UPSTREAM_BASE_URL:}
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: WARN

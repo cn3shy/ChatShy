@@ -1,0 +1,209 @@
+package io.github.cn3shy.chatshy.web;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.fasterxml.jackson.databind.JsonNode;
+
+import io.github.cn3shy.chatshy.config.ChatShyProperties;
+import io.github.cn3shy.chatshy.core.HttpUtil;
+import io.github.cn3shy.chatshy.core.Json;
+import io.github.cn3shy.chatshy.core.SettingsService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+/**
+ * 豆奶页面的同源后端：把浏览器请求转发到固定的 ChatShy 网关（默认本机 8088），
+ * 由服务端注入调用方 Key 与身份头。浏览器永远看不到 Key。
+ */
+@RestController
+public class DounaiController {
+    private static final int BODY_LIMIT = 2 * 1024 * 1024;
+
+    private final SettingsService settings;
+    private final ChatShyProperties properties;
+    private final int serverPort;
+    private final HttpClient http = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build();
+
+    public DounaiController(SettingsService settings, ChatShyProperties properties,
+                            @Value("${server.port:8088}") int serverPort) {
+        this.settings = settings;
+        this.properties = properties;
+        this.serverPort = serverPort;
+    }
+
+    @GetMapping("/api/config")
+    public ResponseEntity<?> config(HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store");
+        return ResponseEntity.ok(Map.of("model", settings.getModelName()));
+    }
+
+    @PostMapping("/api/chat")
+    public void chat(@RequestBody(required = false) byte[] rawBody,
+                     HttpServletRequest request, HttpServletResponse response) throws IOException {
+        if (rawBody != null && rawBody.length > BODY_LIMIT) {
+            HttpUtil.writeJson(response, 413, error("请求体过大"));
+            return;
+        }
+        JsonNode body = Json.tryParse(Json.utf8(rawBody));
+        if (body == null || !body.isObject()) {
+            HttpUtil.writeJson(response, 400, error("messages 不能为空"));
+            return;
+        }
+        JsonNode messages = body.get("messages");
+        if (messages == null || !messages.isArray() || messages.isEmpty()) {
+            HttpUtil.writeJson(response, 400, error("messages 不能为空"));
+            return;
+        }
+
+        String callerKey = settings.getCallerKey();
+        if (callerKey == null || callerKey.isEmpty()) {
+            HttpUtil.writeJson(response, 503, error("服务端尚未配置调用方 Key"));
+            return;
+        }
+
+        String baseUrl = properties.dounai().upstreamBaseUrl();
+        if (baseUrl == null || baseUrl.isBlank()) {
+            baseUrl = "http://127.0.0.1:" + serverPort + "/v1";
+        }
+        String endpoint = buildEndpoint(baseUrl, "/chat/completions");
+
+        List<Object> payloadMessages = new ArrayList<>();
+        String systemPrompt = properties.dounai().systemPrompt();
+        if (systemPrompt != null && !systemPrompt.isEmpty()) {
+            Map<String, Object> system = Json.obj();
+            system.put("role", "system");
+            system.put("content", systemPrompt);
+            payloadMessages.add(system);
+        }
+        for (JsonNode message : messages) payloadMessages.add(message);
+
+        Map<String, Object> payload = Json.obj();
+        payload.put("model", settings.getModelName());
+        payload.put("messages", payloadMessages);
+        payload.put("stream", true);
+        JsonNode temperature = body.get("temperature");
+        if (temperature != null && temperature.isNumber()) {
+            payload.put("temperature", temperature.asDouble());
+        }
+
+        HttpRequest upstreamRequest = HttpRequest.newBuilder(URI.create(endpoint))
+                .timeout(Duration.ofSeconds(300))
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .header("Authorization", "Bearer " + callerKey)
+                .header("X-ChatShy-Caller", HttpUtil.encodeCallerHeader(
+                        properties.dounai().caller() == null ? "豆奶" : properties.dounai().caller()))
+                .POST(HttpRequest.BodyPublishers.ofString(Json.stringify(payload), StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<InputStream> upstream;
+        try {
+            upstream = http.sendAsync(upstreamRequest, HttpResponse.BodyHandlers.ofInputStream()).get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            HttpUtil.writeJson(response, 502, error("连接上游失败：请求被中断"));
+            return;
+        } catch (ExecutionException e) {
+            String detail = e.getCause() == null ? "未知错误" : e.getCause().getMessage();
+            HttpUtil.writeJson(response, 502, error("连接上游失败：" + detail + "（地址：" + endpoint + "）"));
+            return;
+        }
+
+        int status = upstream.statusCode();
+        if (status < 200 || status >= 300) {
+            String text;
+            try (InputStream in = upstream.body()) {
+                text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+            String message = text;
+            try {
+                JsonNode errorNode = Json.parse(text).path("error");
+                if (errorNode.isObject() && errorNode.path("message").isTextual()) {
+                    message = errorNode.path("message").asText();
+                }
+            } catch (Exception ignored) {
+                // 保留原文
+            }
+            if (message.length() > 800) message = message.substring(0, 800);
+            HttpUtil.writeJson(response, status, error("上游返回 " + status + "：" + (message == null ? "" : message)));
+            return;
+        }
+
+        String upstreamType = upstream.headers().firstValue("content-type").orElse("").toLowerCase();
+        if (!upstreamType.contains("text/event-stream")) {
+            String text;
+            try (InputStream in = upstream.body()) {
+                text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+            response.setStatus(200);
+            response.setCharacterEncoding("UTF-8");
+            response.setContentType("text/event-stream; charset=utf-8");
+            response.setHeader("Cache-Control", "no-cache, no-transform");
+            response.setHeader("X-Accel-Buffering", "no");
+            OutputStream out = response.getOutputStream();
+            out.write(("data: " + text.trim() + "\n\n").getBytes(StandardCharsets.UTF_8));
+            out.write("data: [DONE]\n\n".getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            return;
+        }
+
+        response.setStatus(200);
+        response.setCharacterEncoding("UTF-8");
+        response.setContentType("text/event-stream; charset=utf-8");
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("X-Accel-Buffering", "no");
+
+        try (InputStream in = upstream.body()) {
+            OutputStream out = response.getOutputStream();
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = in.read(buffer)) >= 0) {
+                if (read == 0) continue;
+                out.write(buffer, 0, read);
+                out.flush();
+            }
+        } catch (IOException ignored) {
+            // 浏览器断开：关闭上游连接即可，ChatShy 侧会检测到并收尾
+        }
+    }
+
+    private static Map<String, Object> error(String message) {
+        Map<String, Object> error = Json.obj();
+        error.put("message", message);
+        Map<String, Object> body = Json.obj();
+        body.put("error", error);
+        return body;
+    }
+
+    /** 与 Node 版 buildEndpoint 归一：已含版本段直接拼，否则补 /v1。 */
+    static String buildEndpoint(String raw, String suffix) {
+        String base = raw.trim().replaceAll("/+$", "")
+                .replaceAll("(?i)/chat/completions$", "")
+                .replaceAll("(?i)/models$", "")
+                .replaceAll("/+$", "");
+        if (base.matches("(?i).*/v\\d+$")) return base + suffix;
+        return base + "/v1" + suffix;
+    }
+}
