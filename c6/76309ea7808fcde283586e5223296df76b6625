@@ -1,0 +1,14 @@
+server-java/src/main/java/io/github/cn3shy/chatshy/web/DounaiController.java
+  h_8726ce48f1802a 80-93,130-133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c676309ea7808fcde283586e5223296df76b6625",
+  "prompts": {},
+  "humans": {
+    "h_8726ce48f1802a": {
+      "author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
