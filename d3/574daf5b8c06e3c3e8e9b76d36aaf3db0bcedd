@@ -1,0 +1,18 @@
+server-java/src/main/java/io/github/cn3shy/chatshy/core/ThreadStore.java
+  h_8726ce48f1802a 34,98,116
+server-java/src/main/java/io/github/cn3shy/chatshy/web/AnthropicController.java
+  h_8726ce48f1802a 65-69
+server-java/src/main/java/io/github/cn3shy/chatshy/web/OpenAiController.java
+  h_8726ce48f1802a 66-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d3574daf5b8c06e3c3e8e9b76d36aaf3db0bcedd",
+  "prompts": {},
+  "humans": {
+    "h_8726ce48f1802a": {
+      "author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
