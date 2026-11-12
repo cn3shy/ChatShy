@@ -6,6 +6,8 @@ export interface ChatMessage {
   reasoning?: string;
   error?: boolean;
   errorMsg?: string;
+  /** 用户消息上的重试计数，用于限制每条消息最多重试 MAX_RETRIES 次。 */
+  retries?: number;
 }
 
 export interface Conversation {

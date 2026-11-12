@@ -1,4 +1,4 @@
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { fetchModel, streamChat } from './api';
 import { loadConversations, saveConversations } from './storage';
 import type { ChatMessage, Conversation, PayloadMessage } from './types';
@@ -73,6 +73,20 @@ const SYSTEM_PROMPT = `你是“豆奶”，一个中文AI聊天助手。你的�
 
 现在，以“豆奶”的身份开始和用户聊天。记住：抽象是皮肤，有用是骨头，别本末倒置。`;
 
+/** 每条消息最多重试次数，超过后前端与后端都会拒绝再次生成。 */
+export const MAX_RETRIES = 3;
+
+/** 全局轻提示，由 App.vue 渲染为 toast。 */
+export const notice = ref('');
+
+let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+
+function showNotice(message: string): void {
+  notice.value = message;
+  if (noticeTimer !== null) clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { notice.value = ''; }, 2500);
+}
+
 export const state = reactive<ChatState>({
   conversations: loadConversations(),
   currentId: null,
@@ -130,12 +144,24 @@ function buildPayloadMessages(conversation: Conversation): PayloadMessage[] {
   return messages;
 }
 
-export async function send(text: string): Promise<void> {
+export async function send(text: string): Promise<boolean> {
   const trimmed = text.trim();
-  if (trimmed === '' || state.streaming) return;
+  if (trimmed === '' || state.streaming) return false;
 
   let conversation = currentConversation.value;
   if (conversation === null) conversation = createConversation();
+
+  // 拦截重复内容：不允许与上一条用户消息完全相同
+  for (let i = conversation.messages.length - 1; i >= 0; i--) {
+    const message = conversation.messages[i]!;
+    if (message.role === 'user') {
+      if (message.content === trimmed) {
+        showNotice('不能重复发送相同的内容');
+        return false;
+      }
+      break;
+    }
+  }
 
   const isFirst = conversation.messages.length === 0;
   conversation.messages.push({ role: 'user', content: trimmed });
@@ -143,6 +169,7 @@ export async function send(text: string): Promise<void> {
   persist();
 
   await generate(conversation);
+  return true;
 }
 
 async function generate(conversation: Conversation): Promise<void> {
@@ -208,6 +235,14 @@ export function regenerate(): void {
     persist();
     return;
   }
+  // 剩余的最后一条必为用户消息：在其上累计重试次数并限制上限
+  const target = conversation.messages[conversation.messages.length - 1]!;
+  if (target.role !== 'user') return;
+  if ((target.retries ?? 0) >= MAX_RETRIES) {
+    showNotice(`每条消息最多重试 ${MAX_RETRIES} 次`);
+    return;
+  }
+  target.retries = (target.retries ?? 0) + 1;
   persist();
   void generate(conversation);
 }

@@ -40,8 +40,9 @@ function onDelete(id: string): void {
   deleteConversation(id);
 }
 
-function onSend(text: string): void {
-  void send(text);
+async function onSend(text: string): Promise<void> {
+  const ok = await send(text);
+  if (!ok) composer.value?.fill(text);
 }
 
 function onFill(text: string): void {
@@ -80,5 +81,36 @@ function onFill(text: string): void {
         @stop="stop"
       />
     </main>
+
+    <Transition name="toast-fade">
+      <div v-if="state.notice" class="toast">{{ state.notice }}</div>
+    </Transition>
   </div>
 </template>
+
+<style scoped>
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 120px;
+  transform: translateX(-50%);
+  background: rgba(28, 28, 34, 0.92);
+  color: #fff;
+  padding: 8px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  z-index: 80;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.toast-fade-enter-active,
+.toast-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.toast-fade-enter-from,
+.toast-fade-leave-to {
+  opacity: 0;
+}
+</style>

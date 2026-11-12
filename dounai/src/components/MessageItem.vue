@@ -8,6 +8,8 @@ const props = defineProps<{
   message: ChatMessage;
   isLastAssistant: boolean;
   isStreaming: boolean;
+  /** 重试次数已达上限时隐藏重试/重新生成按钮。 */
+  retryBlocked?: boolean;
 }>();
 
 defineEmits<{ regenerate: [] }>();
@@ -70,7 +72,7 @@ async function onBubbleClick(event: MouseEvent): Promise<void> {
           {{ copyLabel }}
         </button>
         <button
-          v-if="isLastAssistant && !message.error"
+          v-if="isLastAssistant && !message.error && !retryBlocked"
           class="act-btn act-regen"
           @click="$emit('regenerate')"
         >
@@ -80,7 +82,7 @@ async function onBubbleClick(event: MouseEvent): Promise<void> {
           </svg>
           重新生成
         </button>
-        <button v-if="message.error" class="act-btn act-regen" @click="$emit('regenerate')">
+        <button v-if="message.error && !retryBlocked" class="act-btn act-regen" @click="$emit('regenerate')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M23 4v6h-6M1 20v-6h6" />
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
