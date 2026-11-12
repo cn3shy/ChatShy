@@ -53,7 +53,9 @@ function createConversation(): Conversation {
   };
   state.conversations.unshift(conversation);
   state.currentId = conversation.id;
-  return conversation;
+  // 必须返回响应式数组中的代理对象：局部持有的原始对象写入不触发 Vue 更新，
+  // 首条消息的流式回复会一直空白到重新生成
+  return state.conversations[0]!;
 }
 
 function buildPayloadMessages(conversation: Conversation): PayloadMessage[] {
