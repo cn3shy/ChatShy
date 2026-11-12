@@ -56,7 +56,13 @@ defineEmits<{
     </nav>
 
     <div class="sidebar-foot">
-      <div class="sidebar-ver">dounai.3shy.cn</div>
+      <a class="sidebar-ver sidebar-site" href="https://dounai.chat" target="_blank" rel="noopener">dounai.chat</a>
+      <a
+        class="sidebar-ver sidebar-icp"
+        href="https://beian.miit.gov.cn/"
+        target="_blank"
+        rel="noopener"
+      >鲁ICP备2025139430号-3</a>
     </div>
   </aside>
 </template>
