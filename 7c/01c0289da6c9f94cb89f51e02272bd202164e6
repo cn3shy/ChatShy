@@ -1,0 +1,22 @@
+server-java/src/main/java/io/github/cn3shy/chatshy/core/ThreadStore.java
+  h_8726ce48f1802a 132-144
+server-java/src/main/java/io/github/cn3shy/chatshy/protocol/AnthropicProtocol.java
+  h_8726ce48f1802a 248-251
+server-java/src/main/java/io/github/cn3shy/chatshy/protocol/OpenAiProtocol.java
+  h_8726ce48f1802a 260-263
+server-java/src/main/java/io/github/cn3shy/chatshy/web/AnthropicController.java
+  h_8726ce48f1802a 65-69
+server-java/src/main/java/io/github/cn3shy/chatshy/web/OpenAiController.java
+  h_8726ce48f1802a 66-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7c01c0289da6c9f94cb89f51e02272bd202164e6",
+  "prompts": {},
+  "humans": {
+    "h_8726ce48f1802a": {
+      "author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
