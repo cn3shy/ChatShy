@@ -1,7 +1,15 @@
 import { computed, reactive } from 'vue';
 import { ApiError, api } from './api';
 import { notifyNewRequest, updateTitleBadge } from './notify';
-import type { ProviderInfo, ProviderInput, SettingsInfo, ThreadDetail, ThreadSummary } from './types';
+import type {
+  ProviderInfo,
+  ProviderInput,
+  RequestDetail,
+  RequestPage,
+  SettingsInfo,
+  ThreadDetail,
+  ThreadSummary,
+} from './types';
 
 export const state = reactive({
   booting: true,
@@ -140,6 +148,33 @@ export async function deleteThread(id: string): Promise<void> {
   await refreshThreads();
 }
 
+/** 批量删除会话；当前选中会话在删除范围内时一并清空右侧详情。 */
+export async function deleteThreads(ids: string[]): Promise<{ deleted: number; failedJobs: number }> {
+  const res = await api.deleteThreads(ids);
+  if (state.selectedId !== null && ids.includes(state.selectedId)) {
+    state.selectedId = null;
+    state.detail = null;
+  }
+  await refreshThreads();
+  return { deleted: res.deleted, failedJobs: res.failedJobs };
+}
+
+/** 请求监控列表；参数与后端 /admin/api/requests 对齐。 */
+export async function fetchRequests(params: {
+  limit: number;
+  offset: number;
+  status?: string;
+  protocol?: string;
+  q?: string;
+}): Promise<RequestPage> {
+  return api.requests(params);
+}
+
+/** 单条请求详情：完整请求 JSON 与回复内容。 */
+export async function fetchRequestDetail(id: string): Promise<RequestDetail> {
+  return api.request(id);
+}
+
 /** 拉黑 / 解除拉黑会话；被拉黑会话的新请求会在网关入口直接被拒绝。 */
 export async function blacklistThread(id: string, blacklisted: boolean): Promise<void> {
   await api.blacklistThread(id, blacklisted);
@@ -180,6 +215,8 @@ function applySettings(s: SettingsInfo): void {
     callerKey: s.callerKey,
     autoForwardEnabled: s.autoForwardEnabled,
     autoForwardProviderId: s.autoForwardProviderId,
+    sensitiveWords: s.sensitiveWords,
+    sensitiveFilterEnabled: s.sensitiveFilterEnabled,
   };
 }
 
@@ -217,6 +254,8 @@ export async function updateSettings(patch: {
   modelName?: string;
   adminPassword?: string;
   currentPassword?: string;
+  sensitiveWords?: string;
+  sensitiveFilterEnabled?: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await api.patchSettings(patch);

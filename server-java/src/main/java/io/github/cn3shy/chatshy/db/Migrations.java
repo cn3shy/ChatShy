@@ -12,12 +12,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * 与 Node 版 src/db/migrate.ts 逐条一致的迁移。只允许追加，不允许改历史项。
- * 现有库 schema_version=3 时是空操作，只做重启语义（pending → dropped）。
+ * PostgreSQL 基线迁移。SQLite 版本的历史迁移不再回放：
+ * 旧的 SQLite 数据由 {@link SqliteImporter} 一次性导入到本 schema。
  */
 @Component
 public class Migrations {
-    public static final int SCHEMA_VERSION = 4;
+    public static final int SCHEMA_VERSION = 2;
 
     private final DataSource dataSource;
     private final JdbcTemplate jdbc;
@@ -80,51 +80,48 @@ public class Migrations {
 
     static final String[] MIGRATIONS = {
             """
-            CREATE TABLE IF NOT EXISTS keys (
-              id           TEXT PRIMARY KEY,
-              name         TEXT NOT NULL,
-              key_hash     TEXT NOT NULL UNIQUE,
-              key_prefix   TEXT NOT NULL,
-              enabled      INTEGER NOT NULL DEFAULT 1,
-              timeout_ms   INTEGER,
-              daily_limit  INTEGER,
-              max_pending  INTEGER NOT NULL DEFAULT 5,
-              created_at   INTEGER NOT NULL,
-              last_used_at INTEGER
-            );
-
             CREATE TABLE IF NOT EXISTS threads (
-              id          TEXT PRIMARY KEY,
-              key_id      TEXT REFERENCES keys(id) ON DELETE CASCADE,
-              title       TEXT NOT NULL DEFAULT '',
-              protocol    TEXT NOT NULL,
-              model       TEXT NOT NULL DEFAULT '',
-              fingerprint TEXT NOT NULL DEFAULT '',
-              created_at  INTEGER NOT NULL,
-              updated_at  INTEGER NOT NULL
+              seq                BIGSERIAL UNIQUE,
+              id                 TEXT PRIMARY KEY,
+              title              TEXT NOT NULL DEFAULT '',
+              protocol           TEXT NOT NULL,
+              model              TEXT NOT NULL DEFAULT '',
+              fingerprint        TEXT NOT NULL DEFAULT '',
+              source_ip          TEXT NOT NULL DEFAULT '',
+              source_ua          TEXT NOT NULL DEFAULT '',
+              source_client      TEXT NOT NULL DEFAULT '',
+              source_fingerprint TEXT NOT NULL DEFAULT '',
+              blacklisted        INTEGER NOT NULL DEFAULT 0,
+              created_at         BIGINT NOT NULL,
+              updated_at         BIGINT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS messages (
+              seq        BIGSERIAL UNIQUE,
               id         TEXT PRIMARY KEY,
               thread_id  TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
               role       TEXT NOT NULL,
               content    TEXT NOT NULL,
               source     TEXT NOT NULL,
               job_id     TEXT,
-              created_at INTEGER NOT NULL
+              created_at BIGINT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS jobs (
-              id            TEXT PRIMARY KEY,
-              thread_id     TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-              protocol      TEXT NOT NULL,
-              mode          TEXT NOT NULL,
-              status        TEXT NOT NULL,
-              request_json  TEXT NOT NULL,
-              reply_content TEXT,
-              deadline_at   INTEGER NOT NULL,
-              created_at    INTEGER NOT NULL,
-              replied_at    INTEGER
+              id              TEXT PRIMARY KEY,
+              thread_id       TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+              protocol        TEXT NOT NULL,
+              mode            TEXT NOT NULL,
+              status          TEXT NOT NULL,
+              request_json    TEXT NOT NULL,
+              reply_content   TEXT,
+              deadline_at     BIGINT NOT NULL,
+              created_at      BIGINT NOT NULL,
+              replied_at      BIGINT,
+              via             TEXT,
+              provider_id     TEXT,
+              forward_error   TEXT,
+              forward_error_at BIGINT
             );
 
             CREATE TABLE IF NOT EXISTS settings (
@@ -132,53 +129,27 @@ public class Migrations {
               value TEXT NOT NULL
             );
 
-            CREATE INDEX IF NOT EXISTS idx_keys_hash        ON keys(key_hash);
-            CREATE INDEX IF NOT EXISTS idx_threads_key      ON threads(key_id);
-            CREATE INDEX IF NOT EXISTS idx_messages_thread  ON messages(thread_id);
-            CREATE INDEX IF NOT EXISTS idx_jobs_thread      ON jobs(thread_id);
-            CREATE INDEX IF NOT EXISTS idx_jobs_status      ON jobs(status);
-            """,
-
-            """
-            ALTER TABLE threads ADD COLUMN source_ip          TEXT NOT NULL DEFAULT '';
-            ALTER TABLE threads ADD COLUMN source_ua          TEXT NOT NULL DEFAULT '';
-            ALTER TABLE threads ADD COLUMN source_client      TEXT NOT NULL DEFAULT '';
-            ALTER TABLE threads ADD COLUMN source_fingerprint TEXT NOT NULL DEFAULT '';
-
-            UPDATE threads SET source_client =
-              CASE WHEN key_id IS NULL THEN '历史会话'
-                   ELSE '旧 Key：' || (SELECT name FROM keys WHERE keys.id = threads.key_id) END;
-
-            UPDATE threads SET source_fingerprint = 'legacy:' || id;
-
-            DROP INDEX IF EXISTS idx_threads_key;
-            ALTER TABLE threads DROP COLUMN key_id;
-
-            DROP TABLE keys;
-
-            CREATE INDEX IF NOT EXISTS idx_threads_source ON threads(source_fingerprint, updated_at);
-            """,
-
-            """
             CREATE TABLE IF NOT EXISTS providers (
+              seq        BIGSERIAL UNIQUE,
               id         TEXT PRIMARY KEY,
               name       TEXT NOT NULL UNIQUE,
               base_url   TEXT NOT NULL,
               api_key    TEXT NOT NULL,
               model      TEXT NOT NULL,
-              created_at INTEGER NOT NULL,
-              updated_at INTEGER NOT NULL
+              created_at BIGINT NOT NULL,
+              updated_at BIGINT NOT NULL
             );
 
-            ALTER TABLE jobs ADD COLUMN via              TEXT;
-            ALTER TABLE jobs ADD COLUMN provider_id      TEXT;
-            ALTER TABLE jobs ADD COLUMN forward_error    TEXT;
-            ALTER TABLE jobs ADD COLUMN forward_error_at INTEGER;
+            CREATE INDEX IF NOT EXISTS idx_threads_source      ON threads(source_fingerprint, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_threads_blacklisted ON threads(blacklisted);
+            CREATE INDEX IF NOT EXISTS idx_messages_thread     ON messages(thread_id);
+            CREATE INDEX IF NOT EXISTS idx_jobs_thread         ON jobs(thread_id);
+            CREATE INDEX IF NOT EXISTS idx_jobs_status         ON jobs(status);
             """,
 
             """
-            ALTER TABLE threads ADD COLUMN blacklisted INTEGER NOT NULL DEFAULT 0;
-            CREATE INDEX IF NOT EXISTS idx_threads_blacklisted ON threads(blacklisted);
+            CREATE INDEX IF NOT EXISTS idx_jobs_created         ON jobs(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_jobs_protocol_status ON jobs(protocol, status);
             """,
     };
 }

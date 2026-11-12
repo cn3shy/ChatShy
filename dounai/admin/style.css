@@ -221,6 +221,32 @@ code {
 
 /* ---- 会话列表 ---- */
 
+.thread-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px 8px 6px;
+}
+
+.thread-toolbar .batch-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.thread-item .thread-check {
+  flex-shrink: 0;
+  margin-right: 2px;
+  accent-color: var(--accent);
+}
+
+.thread-item.checked {
+  border-color: rgba(91, 141, 239, 0.35);
+}
+
 .thread-list {
   overflow-y: auto;
   padding: 6px;
@@ -709,6 +735,230 @@ code {
   color: var(--danger);
 }
 
+.monitor-entry {
+  margin: 8px 14px 4px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.monitor-entry:hover {
+  border-color: var(--accent);
+  color: var(--accent-2);
+}
+
+.monitor-entry.active {
+  background: #e8effc;
+  border-color: rgba(91, 141, 239, 0.35);
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+/* ---- 请求监控 ---- */
+
+.monitor {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 22px 14px;
+}
+
+.monitor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.monitor-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.monitor-title h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  white-space: nowrap;
+}
+
+.monitor-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.monitor-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.monitor-filters select,
+.monitor-filters input {
+  background: #fff;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 5px 9px;
+  font-size: 0.82rem;
+}
+
+.monitor-search {
+  flex: 1 1 220px;
+  min-width: 160px;
+}
+
+.req-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.req-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.req-item.open {
+  border-color: rgba(91, 141, 239, 0.35);
+}
+
+.req-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.req-row:hover {
+  background: #f6f8fc;
+}
+
+.req-status {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.st-pending {
+  color: var(--warn);
+}
+
+.st-replied {
+  color: var(--ok);
+}
+
+.st-timeout {
+  color: var(--danger);
+}
+
+.st-cancelled,
+.st-superseded,
+.st-dropped {
+  color: var(--faint);
+}
+
+.req-protocol {
+  flex-shrink: 0;
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 0.75rem;
+}
+
+.req-source {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.req-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--faint);
+}
+
+.req-toggle {
+  flex-shrink: 0;
+  color: var(--accent-2);
+}
+
+.req-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 8px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.req-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.req-detail {
+  border-top: 1px dashed var(--border);
+  padding: 10px 12px 12px;
+  background: #fafbfe;
+}
+
+.req-detail h4 {
+  margin: 10px 0 6px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.req-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+}
+
+.req-json {
+  margin: 0;
+  max-height: 340px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f4f6fb;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.monitor-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding-top: 2px;
+}
+
 /* ---- 设置页：AI 厂商管理 ---- */
 
 .provider-list {
@@ -971,6 +1221,28 @@ code {
 
 .key-form input {
   width: 130px;
+}
+
+.key-form .sensitive-field {
+  flex: 1 1 100%;
+}
+
+.key-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 110px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+.key-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .note {

@@ -15,16 +15,16 @@ ChatShy 的 JDK 21 / Spring Boot 3.5 实现。与旧 Node 版功能对齐，并�
 
 - Java 21（虚拟线程）
 - Spring Boot 3.5.16 / Spring MVC
-- SQLite（`sqlite-jdbc` + HikariCP 单连接，WAL / foreign_keys）
+- PostgreSQL 14+（`postgresql` JDBC + HikariCP 连接池）
 - `java.net.http.HttpClient` 调用 OpenAI 兼容上游
 - BouncyCastle SCrypt（兼容 Node 版 `scrypt$N$r$p$salt$hash` 管理员密码）
-- JUnit 5 + Spring Boot Test（70 个用例）
+- JUnit 5 + Spring Boot Test（79 个用例，数据库使用 embedded PostgreSQL，无需 Docker）
 
 ## 构建与测试
 
 ```bash
 cd server-java
-mvn test                 # 70 个 JUnit 用例
+mvn test                 # 79 个 JUnit 用例；自动启动 embedded PostgreSQL
 mvn -DskipTests package  # 产物 target/chatshy-server.jar
 ```
 
@@ -51,7 +51,13 @@ java -Xms128m -Xmx256m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC \
 | --- | --- | --- |
 | `PORT` | `8088` | 网关/操作台端口 |
 | `HOST` | `0.0.0.0` | 监听地址（线上 `.env` 为 `127.0.0.1`） |
-| `DB_PATH` | `./data/chatshy.db` | SQLite 文件 |
+| `DB_URL` | `jdbc:postgresql://127.0.0.1:5432/chatshy` | PostgreSQL JDBC 地址 |
+| `DB_USER` | `chatshy` | 数据库用户 |
+| `DB_PASSWORD` | 空 | 数据库密码 |
+| `DB_POOL_SIZE` | `10` | 连接池最大连接数 |
+| `DB_POOL_MIN_IDLE` | `2` | 连接池最小空闲 |
+| `NEW_THREAD_LIMIT` | `5` | 同一 IP 时间窗内最多新建会话数；`0` 关闭限流 |
+| `NEW_THREAD_WINDOW_MS` | `60000` | 限流时间窗（毫秒） |
 | `ADMIN_PASSWORD` | 随机生成并打印 | 仅用于首次播种 |
 | `CALLER_KEY` | 随机生成并打印 | 仅用于首次播种 |
 | `DEFAULT_TIMEOUT_MS` | `180000` | 挂起超时 |
@@ -60,19 +66,27 @@ java -Xms128m -Xmx256m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC \
 | `DOUNAI_PORT` | `8099` | 豆奶端口 |
 | `DOUNAI_HOST` | `127.0.0.1` | 豆奶监听地址 |
 | `DOUNAI_CALLER` | `豆奶` | 操作台来源名 |
-| `DOUNAI_SYSTEM_PROMPT` | 空 | 豆奶前置 system 提示词 |
+| `DOUNAI_SYSTEM_PROMPT` | 空 | 覆盖内置豆奶人设；留空使用打包默认人设 |
 | `DOUNAI_UPSTREAM_BASE_URL` | `http://127.0.0.1:${PORT}/v1` | 豆奶转发的网关地址 |
 
-## 数据兼容
+## 数据库
 
-- 沿用 Node 版 SQLite schema（`schema_version=3`），启动时执行同一套迁移，只允许追加。
-- 管理员密码哈希、调用方 Key、会话/消息/Job、厂商配置全部原样可用。
-- 启动时把遗留 `pending` Job 标记为 `dropped`（与 Node 版重启语义一致）。
+- PostgreSQL schema（`schema_version=2`）：时间戳统一 `BIGINT`，会话/消息/厂商用 `seq BIGSERIAL` 做稳定排序；`jobs.created_at` 有索引供请求监控分页。
+- 启动时自动建表；旧 SQLite 数据用一次性工具导入：
+
+```bash
+mvn -Psqlite-import exec:java \
+  -Dexec.mainClass=io.github.cn3shy.chatshy.db.SqliteImporter \
+  -Dexec.args="--sqlite ../data/chatshy.db --pg-url jdbc:postgresql://127.0.0.1:5432/chatshy --pg-user chatshy --pg-password 密码"
+```
+
+- 目标库非空默认拒绝，确认覆盖加 `--force`；管理员密码哈希、调用方 Key、会话/消息/Job、厂商配置全部保留。
+- 启动时把遗留 `pending` Job 标记为 `dropped`（重启语义一致）。
+- 敏感词词库与开关存放在 `settings` 表（`sensitive_words` / `sensitive_filter_enabled`），操作台设置页可改，最多 5 秒生效。
 
 ## 前端静态资源
 
-- 操作台：`web/dist`（`npm --prefix web run build`），资源路径 `/assets/**`
-- 豆奶：`dounai/dist`（`pnpm -C dounai build`），资源路径 `/dounai-assets/**`
+- 操作台与豆奶共用 `dounai/dist`（`pnpm -C dounai build`）：操作台 `/admin`，豆奶资源路径 `/dounai-assets/**`
 - 豆奶页面带 CSP / nosniff / referrer 安全头；`/api/chat` 只允许同源调用，不开放 CORS。
 
 ## systemd

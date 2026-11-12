@@ -16,7 +16,7 @@
 - 后端：Spring Boot 3.5 / JDK 21，代码在 `server-java/`
 - 前端：`dounai/` 是唯一的 Vite + Vue 3 + TypeScript 工程，一次构建产出**豆奶页**（`/`）与**操作台**（`/admin`）两个页面，依赖用 pnpm 管理
 - 操作台入口：`ai.3shy.cn`、`ai.3shy.cn/admin`、`dounai.chat/admin` 均可打开
-- SQLite 单文件存储（`data/chatshy.db`），schema 与历史版本兼容
+- PostgreSQL 存储（连接信息见 `.env.example` 的 `DB_URL` / `DB_USER` / `DB_PASSWORD`），启动时自动建表；旧 SQLite 数据可用一次性工具导入
 
 ```
 server-java/   Spring Boot 后端
@@ -29,7 +29,9 @@ docs/          设计文档与协议参考
 - **双协议兼容**：`POST /v1/chat/completions`（OpenAI）与 `POST /v1/messages`（Anthropic），流式/非流式均可；Cherry Studio、ChatBox、LobeChat、官方 SDK、Claude Code 等直接接入
 - **操作台**：SSE 实时推送新请求（≤1 秒）、桌面通知 + 提示音、倒计时、重复请求提示、Markdown 输入与代码高亮渲染、手机浏览器可用
 - **唯一全局 Key + 来源标记**：所有调用方共用一个 Key，用请求来源区分"谁在说话"；来源优先取调用方自报的身份头 `X-ChatShy-Caller`，没带则回落到 IP + User-Agent 识别出的客户端名
-- **删除会话**：悬停任意会话即可删除，消息与请求记录一并清除
+- **请求监控**：操作台新增独立页面，分页查看所有请求的参数记录（完整请求 JSON、协议/模式、状态、来源、模型、转发厂商与回复内容），支持按状态/协议/关键词过滤，5 秒自动刷新
+- **删除会话**：悬停任意会话即可单条删除；进入「批量管理」可多选批量删除，消息与请求记录一并清除
+- **敏感词屏蔽**：豆奶公开入口的最新一条用户消息命中词库时直接不回复——不请求上游、不建会话、不消耗 token；词库和开关可在操作台设置页维护
 - **流式打字机**：流式模式下人工回复按字素切片、逐帧下发，观感与真实大模型一致，总时长封顶约 9 秒；AI 转发的回复不走打字机，直接实时透传上游增量
 - **请求挂起 + 可配置超时**：默认 180 秒（全局设置项）；超时返回各协议标准错误体
 - **第三方 AI 转发**：可配置多个 OpenAI 兼容厂商（DeepSeek、通义千问、GLM、任意自定义端点）。对每个待回复请求可手动选择厂商「AI 回复」；侧边栏的「AI 自动转发」开关开启后服务端自动回复所有新请求——操作台关掉也继续生效。流式调用方收到上游实时增量；自动失败时请求留在待回复列表并标注原因
@@ -38,10 +40,12 @@ docs/          设计文档与协议参考
 
 ## 本地开发
 
+后端测试使用 embedded PostgreSQL（Zonky），无需本机安装 PostgreSQL 或 Docker；首次运行会下载 PostgreSQL 二进制。
+
 ```bash
 # 后端（需要 JDK 21）
 cd server-java
-mvn test                  # 单元 + 集成测试
+mvn test                  # 单元 + 集成测试（自动启动 embedded PostgreSQL）
 mvn -DskipTests package   # 产物 target/chatshy-server.jar
 
 # 前端（需要 pnpm）
@@ -119,11 +123,26 @@ export ANTHROPIC_API_KEY="sk-chatshy-..."      # 或 ANTHROPIC_AUTH_TOKEN
 - 上游使用配置里填的模型名，调用方请求里的 `model` 只用于回显；不自动重试、不自动切换厂商
 - 调用方要流式时，转发也走上游流式接口并实时透传增量
 - 自动转发失败（Key 错、限流、超时等）时请求留在待回复列表，显示失败原因，可随时人工接管
-- 上游 Key 明文存在本地 SQLite，管理端接口只回显末四位；编辑时留空表示沿用旧 Key
+- 上游 Key 明文存在 PostgreSQL，管理端接口只回显末四位；编辑时留空表示沿用旧 Key
 - ⚠️ 开启转发后，调用方的对话内容（含 system 提示词）会被发送到所配置的第三方厂商
 - Base URL 填到 `/chat/completions` 之前的那一段，误粘贴完整 endpoint 会自动纠正。不要把 Base URL 指回 ChatShy 自己（会造成递归转发）
 
 ## 部署（本机 systemd）
+
+先准备 PostgreSQL（14+；仓库根目录提供可选的 `docker-compose.yml`）：
+
+```sql
+CREATE USER chatshy WITH PASSWORD '换成强密码';
+CREATE DATABASE chatshy OWNER chatshy;
+```
+
+在 `.env` 中填写：
+
+```bash
+DB_URL=jdbc:postgresql://127.0.0.1:5432/chatshy
+DB_USER=chatshy
+DB_PASSWORD=换成强密码
+```
 
 - systemd 单元：`/etc/systemd/system/chatshy.service`（`WorkingDirectory=/home/ChatShy`）
 - 构建：`cd /home/ChatShy/server-java && mvn -DskipTests package && cd .. && pnpm -C dounai build`
@@ -131,23 +150,30 @@ export ANTHROPIC_API_KEY="sk-chatshy-..."      # 或 ANTHROPIC_AUTH_TOKEN
 - `.env` 由 Spring Boot 启动时自动加载，完整变量见 `.env.example`
 - nginx 反代需保持 `proxy_buffering off`（SSE 流式），并转发真实 IP（`X-Forwarded-For` / `X-Real-IP`）
 
-## 备份
+### 从旧 SQLite 迁移数据
 
-数据只有一个 SQLite 文件（`data/chatshy.db`）。用 Python 标准库在线备份：
+停服务后执行一次性导入（目标库非空会拒绝，确认覆盖加 `--force`）：
 
 ```bash
-cd /home/ChatShy
-mkdir -p data/backups
-python3 - <<'PY'
-import sqlite3, datetime, pathlib
-target = pathlib.Path('data/backups') / f"chatshy-{datetime.date.today()}.db"
-with sqlite3.connect('data/chatshy.db') as src, sqlite3.connect(target) as dst:
-    src.backup(dst)
-print('backup ->', target)
-PY
+cd /home/ChatShy/server-java
+mvn -Psqlite-import exec:java \
+  -Dexec.mainClass=io.github.cn3shy.chatshy.db.SqliteImporter \
+  -Dexec.args="--sqlite ../data/chatshy.db --pg-url jdbc:postgresql://127.0.0.1:5432/chatshy --pg-user chatshy --pg-password 换成强密码"
 ```
 
-停服务直接拷目录也可以（SQLite 有 WAL，建议先 `systemctl stop chatshy`）。
+导入会保留会话、消息、Job、设置（含管理员密码哈希 / 调用方 Key）与厂商配置。
+
+## 备份
+
+```bash
+# 备份
+pg_dump -U chatshy -h 127.0.0.1 -Fc chatshy > chatshy-$(date +%F).dump
+
+# 恢复（会覆盖现有数据）
+pg_restore -U chatshy -h 127.0.0.1 -d chatshy --clean --if-exists chatshy-2026-11-12.dump
+```
+
+旧 SQLite 文件建议在迁移完成后继续保留一段时间，作为回滚兜底。
 
 ## 隐私说明
 

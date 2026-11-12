@@ -12,8 +12,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -45,12 +43,14 @@ import io.github.cn3shy.chatshy.core.ThreadStore;
 class ChatShyIntegrationTest {
     private static final String CALLER_KEY = "sk-chatshy-test-caller-key";
     private static final String ADMIN_PASSWORD = "test-admin-pass";
-    private static Path testDir;
+    private static PgTestServer.TestDatabase testDatabase;
 
     @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry registry) throws IOException {
-        testDir = Files.createTempDirectory("chatshy-it-");
-        registry.add("chatshy.db-path", () -> testDir.resolve("test.db").toString());
+    static void properties(DynamicPropertyRegistry registry) {
+        testDatabase = PgTestServer.createDatabase();
+        registry.add("spring.datasource.url", testDatabase::url);
+        registry.add("spring.datasource.username", () -> "postgres");
+        registry.add("spring.datasource.password", () -> "");
         registry.add("chatshy.admin-password", () -> ADMIN_PASSWORD);
         registry.add("chatshy.caller-key", () -> CALLER_KEY);
         registry.add("chatshy.dounai.enabled", () -> "false");
@@ -58,6 +58,8 @@ class ChatShyIntegrationTest {
         registry.add("chatshy.hub-ping-ms", () -> "150");
         registry.add("chatshy.typewriter-tick-ms", () -> "1");
         registry.add("chatshy.default-timeout-ms", () -> "60000");
+        // 测试会连续创建大量会话，放宽 IP 限流，避免测试自己触发 429
+        registry.add("chatshy.new-thread-limit", () -> "1000");
     }
 
     @LocalServerPort
@@ -86,19 +88,8 @@ class ChatShyIntegrationTest {
     }
 
     @AfterAll
-    void cleanupFiles() {
-        if (testDir == null) return;
-        try (var paths = Files.walk(testDir)) {
-            paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (IOException ignored) {
-                    // ignore
-                }
-            });
-        } catch (IOException ignored) {
-            // ignore
-        }
+    void cleanupDatabase() {
+        if (testDatabase != null) PgTestServer.dropDatabase(testDatabase);
     }
 
     // ---------------------------------------------------------------- helpers
@@ -414,6 +405,77 @@ class ChatShyIntegrationTest {
         assertThat(threads.listMessages(job.threadId())).isEmpty();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM jobs WHERE thread_id = ?", Integer.class, job.threadId()))
                 .isZero();
+    }
+
+    @Test
+    void batchDeleteThreadsFinishesPendingAndCascades() throws Exception {
+        String cookie = login();
+        CompletableFuture<HttpResponse<String>> a = http.sendAsync(
+                callerRequest(openAiBody("IT 批量删除 A", false), "ChatBox/1.0.0", null).build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        CompletableFuture<HttpResponse<String>> b = http.sendAsync(
+                callerRequest(openAiBody("IT 批量删除 B", false), "ChatBox/1.0.0", null).build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        var jobs = waitPending(2);
+        String firstId = jobs.get(0).threadId();
+        String secondId = jobs.get(1).threadId();
+
+        HttpResponse<String> deletion = call("DELETE", "/admin/api/threads",
+                Json.stringify(Map.of("ids", List.of(firstId, secondId))), cookie);
+        assertThat(deletion.statusCode()).isEqualTo(200);
+        JsonNode result = Json.parse(deletion.body());
+        assertThat(result.path("deleted").asInt()).isEqualTo(2);
+        assertThat(result.path("failedJobs").asInt()).isEqualTo(2);
+
+        assertThat(a.get(10, TimeUnit.SECONDS).statusCode()).isEqualTo(504);
+        assertThat(b.get(10, TimeUnit.SECONDS).statusCode()).isEqualTo(504);
+        assertThat(threads.getThread(firstId)).isNull();
+        assertThat(threads.getThread(secondId)).isNull();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM messages WHERE thread_id = ?",
+                Integer.class, firstId)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM jobs WHERE thread_id = ?",
+                Integer.class, secondId)).isZero();
+    }
+
+    @Test
+    void adminRequestMonitorListsParameters() throws Exception {
+        String cookie = login();
+        String marker = "IT-MON-9f3a";
+        CompletableFuture<HttpResponse<String>> caller = http.sendAsync(
+                callerRequest(openAiBody("请处理 " + marker, false), "ChatBox/1.0.0", null).build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        PendingJob job = waitPending(1).get(0);
+
+        HttpResponse<String> list = call("GET",
+                "/admin/api/requests?limit=10&offset=0&status=pending&q=" + marker, null, cookie);
+        assertThat(list.statusCode()).isEqualTo(200);
+        JsonNode page = Json.parse(list.body());
+        assertThat(page.path("total").asInt()).isGreaterThanOrEqualTo(1);
+
+        JsonNode item = null;
+        for (JsonNode node : page.path("requests")) {
+            if (job.id().equals(node.path("id").asText())) item = node;
+        }
+        assertThat(item).isNotNull();
+        assertThat(item.path("requestPreview").asText()).contains(marker);
+        assertThat(item.path("protocol").asText()).isEqualTo("openai");
+        assertThat(item.path("sourceIp").asText()).isNotEmpty();
+
+        HttpResponse<String> detail = call("GET", "/admin/api/requests/" + job.id(), null, cookie);
+        assertThat(detail.statusCode()).isEqualTo(200);
+        JsonNode detailBody = Json.parse(detail.body());
+        assertThat(detailBody.path("requestJson").asText()).contains(marker);
+        assertThat(detailBody.path("threadId").asText()).isEqualTo(job.threadId());
+        assertThat(detailBody.path("replyContent").isNull()).isTrue();
+
+        assertThat(adminReply(cookie, job.id(), "监控回复").statusCode()).isEqualTo(200);
+        assertThat(caller.get(10, TimeUnit.SECONDS).statusCode()).isEqualTo(200);
+
+        HttpResponse<String> replied = call("GET",
+                "/admin/api/requests?limit=10&offset=0&status=replied&q=" + marker, null, cookie);
+        JsonNode repliedPage = Json.parse(replied.body());
+        assertThat(repliedPage.path("total").asInt()).isEqualTo(1);
+        assertThat(repliedPage.path("requests").get(0).path("status").asText()).isEqualTo("replied");
     }
 
     @Test
