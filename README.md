@@ -145,7 +145,8 @@ DB_PASSWORD=换成强密码
 ```
 
 - systemd 单元：`/etc/systemd/system/chatshy.service`（`WorkingDirectory=/home/ChatShy`）
-- 构建：`cd /home/ChatShy/server-java && mvn -DskipTests package && cd .. && pnpm -C dounai build`
+- 构建：推送到 `main` 后由 GitHub Actions 自动构建，产物发布到 GitHub Release（`.github/workflows/build-release.yml`）；服务器只需 JRE 21，不需要 Maven/Node
+- 更新：首次把 `scripts/update.sh` 放到服务器（如 `/home/ChatShy/update.sh`）并 `chmod +x`；之后每次执行 `/home/ChatShy/update.sh` 拉取最新产物、备份并重启，`--rollback` 回滚到上一版。仅前端有变化时脚本不会重启服务
 - 启停：`systemctl restart chatshy`；日志：`journalctl -u chatshy -f`
 - `.env` 由 Spring Boot 启动时自动加载，完整变量见 `.env.example`
 - nginx 反代需保持 `proxy_buffering off`（SSE 流式），并转发真实 IP（`X-Forwarded-For` / `X-Real-IP`）
