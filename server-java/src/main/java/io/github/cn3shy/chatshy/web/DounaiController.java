@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,8 +26,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import io.github.cn3shy.chatshy.config.ChatShyProperties;
+import io.github.cn3shy.chatshy.config.PersonaPrompt;
 import io.github.cn3shy.chatshy.core.HttpUtil;
 import io.github.cn3shy.chatshy.core.Json;
+import io.github.cn3shy.chatshy.core.SensitiveWordFilter;
 import io.github.cn3shy.chatshy.core.SettingsService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -36,10 +40,13 @@ import jakarta.servlet.http.HttpServletResponse;
  */
 @RestController
 public class DounaiController {
+    private static final Logger log = LoggerFactory.getLogger(DounaiController.class);
     private static final int BODY_LIMIT = 2 * 1024 * 1024;
 
     private final SettingsService settings;
     private final ChatShyProperties properties;
+    private final PersonaPrompt persona;
+    private final SensitiveWordFilter sensitiveWords;
     private final int serverPort;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -47,9 +54,12 @@ public class DounaiController {
             .build();
 
     public DounaiController(SettingsService settings, ChatShyProperties properties,
+                            PersonaPrompt persona, SensitiveWordFilter sensitiveWords,
                             @Value("${server.port:8088}") int serverPort) {
         this.settings = settings;
         this.properties = properties;
+        this.persona = persona;
+        this.sensitiveWords = sensitiveWords;
         this.serverPort = serverPort;
     }
 
@@ -91,6 +101,14 @@ public class DounaiController {
             return;
         }
 
+        // 垃圾话直接不回复：不请求上游、不创建会话、不消耗 token
+        String hit = sensitiveWords.match(lastUserContent);
+        if (hit != null) {
+            log.warn("拦截敏感词：ip={} word={}", HttpUtil.clientIp(request), hit);
+            writeBlocked(response);
+            return;
+        }
+
         String callerKey = settings.getCallerKey();
         if (callerKey == null || callerKey.isEmpty()) {
             HttpUtil.writeJson(response, 503, error("服务端尚未配置调用方 Key"));
@@ -104,14 +122,25 @@ public class DounaiController {
         String endpoint = buildEndpoint(baseUrl, "/chat/completions");
 
         List<Object> payloadMessages = new ArrayList<>();
-        String systemPrompt = properties.dounai().systemPrompt();
+        // 人设只由服务端维护：客户端传来的 system/developer 一律丢弃，防止网络层覆盖人设
+        String systemPrompt = persona.text();
         if (systemPrompt != null && !systemPrompt.isEmpty()) {
             Map<String, Object> system = Json.obj();
             system.put("role", "system");
             system.put("content", systemPrompt);
             payloadMessages.add(system);
         }
-        for (JsonNode message : messages) payloadMessages.add(message);
+        boolean hasUserMessage = false;
+        for (JsonNode message : messages) {
+            String role = message.path("role").asText();
+            if (!"user".equals(role) && !"assistant".equals(role)) continue;
+            if ("user".equals(role)) hasUserMessage = true;
+            payloadMessages.add(message);
+        }
+        if (!hasUserMessage) {
+            HttpUtil.writeJson(response, 400, error("messages 不能为空"));
+            return;
+        }
 
         Map<String, Object> payload = Json.obj();
         payload.put("model", settings.getModelName());
@@ -205,6 +234,19 @@ public class DounaiController {
         } catch (IOException ignored) {
             // 浏览器断开：关闭上游连接即可，ChatShy 侧会检测到并收尾
         }
+    }
+
+    /** 命中敏感词时返回静默 SSE：前端识别响应头后移除占位消息，不展示任何回复。 */
+    private static void writeBlocked(HttpServletResponse response) throws IOException {
+        response.setStatus(200);
+        response.setCharacterEncoding("UTF-8");
+        response.setContentType("text/event-stream; charset=utf-8");
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("X-Accel-Buffering", "no");
+        response.setHeader("X-ChatShy-Blocked", "1");
+        OutputStream out = response.getOutputStream();
+        out.write("data: [DONE]\n\n".getBytes(StandardCharsets.UTF_8));
+        out.flush();
     }
 
     private static Map<String, Object> error(String message) {

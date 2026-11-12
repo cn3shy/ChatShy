@@ -8,6 +8,8 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
@@ -45,9 +47,20 @@ public class ThreadStore {
             rs.getString("source"), rs.getString("job_id"), rs.getLong("created_at"));
 
     private final JdbcTemplate jdbc;
+    private final int newThreadLimit;
+    private final long newThreadWindowMs;
 
     public ThreadStore(JdbcTemplate jdbc) {
+        this(jdbc, 5, 60_000);
+    }
+
+    @Autowired
+    public ThreadStore(JdbcTemplate jdbc,
+                       @Value("${chatshy.new-thread-limit:5}") int newThreadLimit,
+                       @Value("${chatshy.new-thread-window-ms:60000}") long newThreadWindowMs) {
         this.jdbc = jdbc;
+        this.newThreadLimit = newThreadLimit;
+        this.newThreadWindowMs = newThreadWindowMs;
     }
 
     public ResolveResult resolve(ResolveParams params) {
@@ -59,7 +72,7 @@ public class ThreadStore {
         String fingerprint = contentFingerprint(params.system() == null ? "" : params.system(), firstUser);
 
         List<ThreadRecord> candidates = jdbc.query(
-                "SELECT * FROM threads WHERE source_fingerprint = ? ORDER BY updated_at DESC, rowid DESC",
+                "SELECT * FROM threads WHERE source_fingerprint = ? ORDER BY updated_at DESC, seq DESC",
                 THREAD_MAPPER, params.source().fingerprint());
 
         ThreadRecord matched = null;
@@ -129,17 +142,13 @@ public class ThreadStore {
         jdbc.update("UPDATE threads SET blacklisted = ? WHERE id = ?", blacklisted ? 1 : 0, id);
     }
 
-    /** 同一 IP 的时间窗内最多新建会话数；超过即判定为刷会话烧 token，入口直接拒绝。 */
-    public static final int NEW_THREAD_LIMIT_PER_WINDOW = 5;
-    public static final long NEW_THREAD_WINDOW_MS = 60_000;
-
-    /** 该 IP 在时间窗内新建的会话数是否已达上限（达到即拒绝第 limit+1 次）。 */
+    /** 同一 IP 的时间窗内最多新建会话数；limit <= 0 表示关闭限流。 */
     public boolean newThreadLimitReached(String ip) {
-        if (ip == null || ip.isEmpty()) return false;
+        if (newThreadLimit <= 0 || ip == null || ip.isEmpty()) return false;
         Long count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM threads WHERE source_ip = ? AND created_at > ?",
-                Long.class, ip, System.currentTimeMillis() - NEW_THREAD_WINDOW_MS);
-        return count != null && count >= NEW_THREAD_LIMIT_PER_WINDOW;
+                Long.class, ip, System.currentTimeMillis() - newThreadWindowMs);
+        return count != null && count >= newThreadLimit;
     }
 
     public ThreadRecord getThread(String id) {
@@ -148,7 +157,7 @@ public class ThreadStore {
     }
 
     public List<MessageRecord> listMessages(String threadId) {
-        return jdbc.query("SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC, rowid ASC",
+        return jdbc.query("SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC, seq ASC",
                 MESSAGE_MAPPER, threadId);
     }
 
@@ -164,14 +173,14 @@ public class ThreadStore {
         jdbc.update("""
                 UPDATE messages SET job_id = ?
                 WHERE id = (SELECT id FROM messages WHERE thread_id = ? AND role = 'user' AND job_id IS NULL
-                            ORDER BY created_at DESC, rowid DESC LIMIT 1)
+                            ORDER BY created_at DESC, seq DESC LIMIT 1)
                 """, jobId, threadId);
     }
 
     private List<MessageRecord> apiMessagesOf(String threadId) {
         return jdbc.query("""
                 SELECT * FROM messages WHERE thread_id = ? AND source = 'api' AND role IN ('user', 'assistant')
-                ORDER BY created_at ASC, rowid ASC
+                ORDER BY created_at ASC, seq ASC
                 """, MESSAGE_MAPPER, threadId);
     }
 

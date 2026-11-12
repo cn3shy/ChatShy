@@ -3,12 +3,16 @@ package io.github.cn3shy.chatshy.web;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 
 import org.springframework.http.HttpHeaders;
@@ -21,6 +25,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -58,6 +63,12 @@ public class AdminController {
 
     private record PendingRow(String id, String protocol, String mode, long deadlineAt,
                               String forwardError, Long forwardErrorAt) {
+    }
+
+    private record RequestRow(String id, String threadId, String threadTitle, String protocol, String mode,
+                              String status, String model, long createdAt, Long repliedAt, String via,
+                              String providerName, String sourceIp, String sourceUa, String sourceClient,
+                              String requestPreview, String replyPreview, String forwardError) {
     }
 
     private final JdbcTemplate jdbc;
@@ -177,15 +188,17 @@ public class AdminController {
     @GetMapping("/admin/api/threads")
     public ResponseEntity<?> listThreads() {
         List<ThreadListRow> rows = jdbc.query("""
-                SELECT t.id, t.title, t.protocol, t.model, t.created_at, t.updated_at,
-                       t.source_ip, t.source_ua, t.source_client, t.source_fingerprint,
-                       (SELECT content FROM messages m WHERE m.thread_id = t.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS last_content,
-                       t.blacklisted,
-                       (SELECT COUNT(*) FROM jobs j WHERE j.thread_id = t.id AND j.status = 'pending') AS pending_count,
-                       (SELECT j.id FROM jobs j WHERE j.thread_id = t.id AND j.status = 'pending' ORDER BY j.created_at DESC LIMIT 1) AS pending_job_id,
-                       (SELECT j.deadline_at FROM jobs j WHERE j.thread_id = t.id AND j.status = 'pending' ORDER BY j.created_at DESC LIMIT 1) AS pending_deadline
-                FROM threads t
-                ORDER BY (pending_count > 0) DESC, pending_deadline ASC, t.updated_at DESC
+                SELECT * FROM (
+                    SELECT t.id, t.title, t.protocol, t.model, t.created_at, t.updated_at,
+                           t.source_ip, t.source_ua, t.source_client, t.source_fingerprint,
+                           (SELECT content FROM messages m WHERE m.thread_id = t.id ORDER BY m.created_at DESC, m.seq DESC LIMIT 1) AS last_content,
+                           t.blacklisted,
+                           (SELECT COUNT(*) FROM jobs j WHERE j.thread_id = t.id AND j.status = 'pending') AS pending_count,
+                           (SELECT j.id FROM jobs j WHERE j.thread_id = t.id AND j.status = 'pending' ORDER BY j.created_at DESC LIMIT 1) AS pending_job_id,
+                           (SELECT j.deadline_at FROM jobs j WHERE j.thread_id = t.id AND j.status = 'pending' ORDER BY j.created_at DESC LIMIT 1) AS pending_deadline
+                    FROM threads t
+                ) s
+                ORDER BY (s.pending_count > 0) DESC, s.pending_deadline ASC, s.updated_at DESC
                 LIMIT 200
                 """, (rs, i) -> new ThreadListRow(
                 rs.getString("id"), rs.getString("title"), rs.getString("protocol"), rs.getString("model"),
@@ -290,6 +303,39 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("ok", true, "failedJobs", failed));
     }
 
+    /** 批量删除会话；单次最多 500 条，不存在或重复的 id 幂等忽略。 */
+    @DeleteMapping("/admin/api/threads")
+    public ResponseEntity<?> deleteThreads(@RequestBody(required = false) byte[] rawBody) {
+        JsonNode body = Json.tryParse(Json.utf8(rawBody));
+        JsonNode idsNode = body == null ? null : body.get("ids");
+        if (idsNode == null || !idsNode.isArray() || idsNode.isEmpty()) {
+            return ResponseEntity.status(400).body(Map.of("error", "empty_ids"));
+        }
+        if (idsNode.size() > 500) {
+            return ResponseEntity.status(400).body(Map.of(
+                    "error", "too_many_ids", "message", "单次最多删除 500 条会话"));
+        }
+        Set<String> ids = new LinkedHashSet<>();
+        for (JsonNode node : idsNode) {
+            if (node.isTextual() && !node.asText().isBlank()) ids.add(node.asText());
+        }
+        if (ids.isEmpty()) {
+            return ResponseEntity.status(400).body(Map.of("error", "empty_ids"));
+        }
+
+        int deleted = 0;
+        int failedJobs = 0;
+        for (String id : ids) {
+            if (threads.getThread(id) == null) continue;
+            failedJobs += queue.failForThread(id);
+            if (threads.deleteThread(id)) {
+                deleted++;
+                hub.broadcast(HubEvent.threadDeleted(id));
+            }
+        }
+        return ResponseEntity.ok(Map.of("ok", true, "deleted", deleted, "failedJobs", failedJobs));
+    }
+
     /** 拉黑 / 解除拉黑：被拉黑的会话在网关入口直接收到 403，不再产生待回复请求。 */
     @PostMapping("/admin/api/threads/{id}/blacklist")
     public ResponseEntity<?> blacklistThread(@PathVariable String id,
@@ -299,6 +345,136 @@ public class AdminController {
         boolean blacklisted = body != null && body.path("blacklisted").asBoolean(false);
         threads.setBlacklisted(id, blacklisted);
         return ResponseEntity.ok(Map.of("ok", true, "blacklisted", blacklisted));
+    }
+
+    // ---- 请求监控 ----
+
+    @GetMapping("/admin/api/requests")
+    public ResponseEntity<?> listRequests(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String protocol,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(defaultValue = "0") int offset) {
+        int safeLimit = Math.max(1, Math.min(limit, 200));
+        int safeOffset = Math.max(0, offset);
+
+        StringBuilder where = new StringBuilder(" WHERE 1=1");
+        List<Object> args = new ArrayList<>();
+        if (status != null && !status.isBlank()) {
+            where.append(" AND j.status = ?");
+            args.add(status.trim());
+        }
+        if (protocol != null && !protocol.isBlank()) {
+            where.append(" AND j.protocol = ?");
+            args.add(protocol.trim());
+        }
+        if (q != null && !q.isBlank()) {
+            where.append(" AND (j.request_json ILIKE ? OR t.title ILIKE ?)");
+            String like = "%" + q.trim() + "%";
+            args.add(like);
+            args.add(like);
+        }
+
+        String from = " FROM jobs j LEFT JOIN threads t ON t.id = j.thread_id"
+                + " LEFT JOIN providers p ON p.id = j.provider_id";
+        Long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, args.toArray());
+
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add(safeLimit);
+        pageArgs.add(safeOffset);
+        List<RequestRow> rows = jdbc.query("""
+                SELECT j.id, j.thread_id, j.protocol, j.mode, j.status, j.created_at, j.replied_at,
+                       j.via, j.provider_id, j.request_json, j.reply_content, j.forward_error,
+                       t.title, t.model, t.source_ip, t.source_ua, t.source_client,
+                       p.name AS provider_name
+                """ + from + where + " ORDER BY j.created_at DESC LIMIT ? OFFSET ?",
+                (rs, i) -> new RequestRow(
+                        rs.getString("id"), rs.getString("thread_id"), rs.getString("title"),
+                        rs.getString("protocol"), rs.getString("mode"), rs.getString("status"),
+                        rs.getString("model"), rs.getLong("created_at"), nullableLong(rs, "replied_at"),
+                        rs.getString("via"), rs.getString("provider_name"),
+                        rs.getString("source_ip"), rs.getString("source_ua"), rs.getString("source_client"),
+                        preview(rs.getString("request_json"), 600),
+                        preview(rs.getString("reply_content"), 300),
+                        rs.getString("forward_error")),
+                pageArgs.toArray());
+
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (RequestRow row : rows) {
+            Map<String, Object> item = Json.obj();
+            item.put("id", row.id());
+            item.put("threadId", row.threadId());
+            item.put("threadTitle", row.threadTitle() == null ? "" : row.threadTitle());
+            item.put("protocol", row.protocol());
+            item.put("mode", row.mode());
+            item.put("status", row.status());
+            item.put("model", row.model() == null ? "" : row.model());
+            item.put("createdAt", row.createdAt());
+            item.put("repliedAt", row.repliedAt());
+            item.put("via", row.via() == null ? "" : row.via());
+            item.put("providerName", row.providerName() == null ? "" : row.providerName());
+            item.put("sourceIp", row.sourceIp() == null ? "" : row.sourceIp());
+            item.put("sourceUa", row.sourceUa() == null ? "" : row.sourceUa());
+            item.put("sourceClient", row.sourceClient() == null ? "" : row.sourceClient());
+            item.put("requestPreview", row.requestPreview());
+            item.put("replyPreview", row.replyPreview());
+            item.put("forwardError", row.forwardError());
+            list.add(item);
+        }
+
+        Map<String, Object> body = Json.obj();
+        body.put("total", total == null ? 0 : total);
+        body.put("limit", safeLimit);
+        body.put("offset", safeOffset);
+        body.put("requests", list);
+        return ResponseEntity.ok(body);
+    }
+
+    @GetMapping("/admin/api/requests/{id}")
+    public ResponseEntity<?> getRequest(@PathVariable String id) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT j.id, j.thread_id, j.protocol, j.mode, j.status, j.created_at, j.replied_at,
+                       j.via, j.request_json, j.reply_content, j.forward_error, j.forward_error_at,
+                       t.title, t.model, t.source_ip, t.source_ua, t.source_client,
+                       p.name AS provider_name
+                FROM jobs j
+                LEFT JOIN threads t ON t.id = j.thread_id
+                LEFT JOIN providers p ON p.id = j.provider_id
+                WHERE j.id = ?
+                """, id);
+        if (rows.isEmpty()) return ResponseEntity.status(404).body(Map.of("error", "not_found"));
+        Map<String, Object> row = rows.get(0);
+        Map<String, Object> body = Json.obj();
+        body.put("id", row.get("id"));
+        body.put("threadId", row.get("thread_id"));
+        body.put("threadTitle", row.get("title") == null ? "" : row.get("title"));
+        body.put("protocol", row.get("protocol"));
+        body.put("mode", row.get("mode"));
+        body.put("status", row.get("status"));
+        body.put("model", row.get("model") == null ? "" : row.get("model"));
+        body.put("createdAt", row.get("created_at"));
+        body.put("repliedAt", row.get("replied_at"));
+        body.put("via", row.get("via") == null ? "" : row.get("via"));
+        body.put("providerName", row.get("provider_name") == null ? "" : row.get("provider_name"));
+        body.put("sourceIp", row.get("source_ip") == null ? "" : row.get("source_ip"));
+        body.put("sourceUa", row.get("source_ua") == null ? "" : row.get("source_ua"));
+        body.put("sourceClient", row.get("source_client") == null ? "" : row.get("source_client"));
+        body.put("requestJson", row.get("request_json") == null ? "" : row.get("request_json"));
+        body.put("replyContent", row.get("reply_content"));
+        body.put("forwardError", row.get("forward_error"));
+        body.put("forwardErrorAt", row.get("forward_error_at"));
+        return ResponseEntity.ok(body);
+    }
+
+    private static String preview(String text, int max) {
+        if (text == null) return "";
+        return text.length() <= max ? text : text.substring(0, max) + "…";
+    }
+
+    private static Long nullableLong(ResultSet rs, String column) throws SQLException {
+        long value = rs.getLong(column);
+        return rs.wasNull() ? null : value;
     }
 
     // ---- 回复 / 忽略 / 转发 ----
@@ -529,6 +705,30 @@ public class AdminController {
             newAutoEnabled = node.asBoolean();
         }
 
+        String newSensitiveWords = null;
+        if (body.has("sensitiveWords")) {
+            JsonNode node = body.get("sensitiveWords");
+            if (node == null || !node.isTextual()) {
+                return ResponseEntity.status(400).body(Map.of(
+                        "error", "invalid_sensitive_words", "message", "敏感词必须是字符串"));
+            }
+            newSensitiveWords = node.asText();
+            if (newSensitiveWords.length() > 20_000) {
+                return ResponseEntity.status(400).body(Map.of(
+                        "error", "invalid_sensitive_words", "message", "敏感词列表不能超过 20000 个字符"));
+            }
+        }
+
+        Boolean newSensitiveEnabled = null;
+        if (body.has("sensitiveFilterEnabled")) {
+            JsonNode node = body.get("sensitiveFilterEnabled");
+            if (node == null || !node.isBoolean()) {
+                return ResponseEntity.status(400).body(Map.of(
+                        "error", "invalid_sensitive_filter", "message", "敏感词开关必须是布尔值"));
+            }
+            newSensitiveEnabled = node.asBoolean();
+        }
+
         String newAutoProvider = null;
         if (body.has("autoForwardProviderId")) {
             JsonNode node = body.get("autoForwardProviderId");
@@ -557,6 +757,8 @@ public class AdminController {
         if (newPassword != null) settings.setAdminPassword(newPassword);
         if (newAutoEnabled != null) settings.setAutoForwardEnabled(newAutoEnabled);
         if (newAutoProvider != null) settings.setAutoForwardProviderId(newAutoProvider);
+        if (newSensitiveWords != null) settings.setSensitiveWordsText(newSensitiveWords);
+        if (newSensitiveEnabled != null) settings.setSensitiveFilterEnabled(newSensitiveEnabled);
 
         hub.broadcast(HubEvent.settingsUpdated());
         Map<String, Object> result = settingsPayload();
@@ -571,6 +773,9 @@ public class AdminController {
         payload.put("callerKey", settings.getCallerKey() == null ? "" : settings.getCallerKey());
         payload.put("autoForwardEnabled", settings.isAutoForwardEnabled());
         payload.put("autoForwardProviderId", settings.getAutoForwardProviderId());
+        payload.put("sensitiveWords", settings.getSensitiveWordsText() == null
+                ? "" : settings.getSensitiveWordsText());
+        payload.put("sensitiveFilterEnabled", settings.isSensitiveFilterEnabled());
         return payload;
     }
 

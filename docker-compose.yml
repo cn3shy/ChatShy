@@ -1,0 +1,24 @@
+# 可选的本地/测试 PostgreSQL。生产环境用云数据库或系统安装的 PostgreSQL 时可忽略本文件。
+# 启动：docker compose up -d
+# 使用前请把 POSTGRES_PASSWORD 改成强密码，并与 .env 的 DB_PASSWORD 保持一致。
+services:
+  postgres:
+    image: postgres:16
+    container_name: chatshy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: chatshy
+      POSTGRES_USER: chatshy
+      POSTGRES_PASSWORD: change-me
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - chatshy-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatshy -d chatshy"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  chatshy-pgdata:
