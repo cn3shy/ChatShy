@@ -5,9 +5,13 @@
 # 首次使用：把本文件放到服务器（如 /home/ChatShy/update.sh）并 chmod +x。
 #
 # 用法（在服务器上以 root 运行）：
-#   ./update.sh              # 更新到最新构建
-#   ./update.sh --rollback   # 回滚到上一版
+#   ./update.sh                  # 从 GitHub Release 更新到最新构建
+#   ./update.sh --local DIR      # 使用本地已下载的产物更新（GitHub 下载超时时用）
+#   ./update.sh --rollback       # 回滚到上一版
 #   ./update.sh --help
+#
+# --local DIR 中需要 chatshy-server.jar、dounai-dist.tar.gz；
+# 可选 release.txt（第一行作为版本标识）。
 #
 # 可覆盖的环境变量：
 #   CHATSHY_REPO         GitHub 仓库        默认 cn3shy/ChatShy
@@ -25,6 +29,7 @@ HEALTH_URL="${CHATSHY_HEALTH_URL:-http://127.0.0.1:8088/healthz}"
 KEEP="${CHATSHY_KEEP:-5}"
 
 RELEASE_BASE="https://github.com/${REPO}/releases/latest/download"
+LOCAL_DIR=""
 JAR="${ROOT}/server-java/target/chatshy-server.jar"
 DIST="${ROOT}/dounai/dist"
 BACKUP_DIR="${ROOT}/backups"
@@ -44,25 +49,40 @@ trap cleanup EXIT
 exec 9>"${LOCK_FILE}"
 flock -n 9 || die "已有更新正在进行（锁: ${LOCK_FILE}）"
 
-fetch_release() {
+stage_artifacts() {
   TMP="$(mktemp -d)"
+  mkdir -p "${TMP}/dist"
 
-  RELEASE_TAG="$(curl -fsSL --max-time 10 \
-      "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
-      | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)" || true
-  if [[ -z "${RELEASE_TAG}" ]]; then RELEASE_TAG="latest"; fi
+  if [[ -n "${LOCAL_DIR}" ]]; then
+    [[ -d "${LOCAL_DIR}" ]] || die "本地目录不存在: ${LOCAL_DIR}"
+    [[ -f "${LOCAL_DIR}/chatshy-server.jar" ]] || die "缺少 ${LOCAL_DIR}/chatshy-server.jar"
+    [[ -f "${LOCAL_DIR}/dounai-dist.tar.gz" ]] || die "缺少 ${LOCAL_DIR}/dounai-dist.tar.gz"
+    cp -f "${LOCAL_DIR}/chatshy-server.jar" "${TMP}/chatshy-server.jar"
+    cp -f "${LOCAL_DIR}/dounai-dist.tar.gz" "${TMP}/dounai-dist.tar.gz"
+    if [[ -f "${LOCAL_DIR}/release.txt" ]]; then
+      RELEASE_TAG="$(head -n1 "${LOCAL_DIR}/release.txt" | tr -d '\r')"
+    else
+      RELEASE_TAG="local"
+    fi
+    [[ -n "${RELEASE_TAG}" ]] || RELEASE_TAG="local"
+    log "使用本地产物: ${LOCAL_DIR}（${RELEASE_TAG}）"
+  else
+    RELEASE_TAG="$(curl -fsSL --max-time 10 \
+        "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+        | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)" || true
+    if [[ -z "${RELEASE_TAG}" ]]; then RELEASE_TAG="latest"; fi
 
-  log "下载 ${REPO} @ ${RELEASE_TAG}"
-  curl -fL --retry 3 --connect-timeout 10 --max-time 300 \
-    -o "${TMP}/chatshy-server.jar" "${RELEASE_BASE}/chatshy-server.jar" \
-    || die "下载后端失败（确认 Release 中存在 chatshy-server.jar）"
-  curl -fL --retry 3 --connect-timeout 10 --max-time 300 \
-    -o "${TMP}/dounai-dist.tar.gz" "${RELEASE_BASE}/dounai-dist.tar.gz" \
-    || die "下载前端失败（确认 Release 中存在 dounai-dist.tar.gz）"
+    log "下载 ${REPO} @ ${RELEASE_TAG}"
+    curl -fL --retry 3 --connect-timeout 10 --max-time 300 \
+      -o "${TMP}/chatshy-server.jar" "${RELEASE_BASE}/chatshy-server.jar" \
+      || die "下载后端失败（可先用浏览器下载两个文件，再执行 ./update.sh --local <目录>）"
+    curl -fL --retry 3 --connect-timeout 10 --max-time 300 \
+      -o "${TMP}/dounai-dist.tar.gz" "${RELEASE_BASE}/dounai-dist.tar.gz" \
+      || die "下载前端失败（可先用浏览器下载两个文件，再执行 ./update.sh --local <目录>）"
+  fi
 
   [[ -s "${TMP}/chatshy-server.jar" ]] || die "后端文件为空"
   head -c 2 "${TMP}/chatshy-server.jar" | grep -q 'PK' || die "后端文件不是有效的 jar"
-  mkdir -p "${TMP}/dist"
   tar -xzf "${TMP}/dounai-dist.tar.gz" -C "${TMP}/dist"
   [[ -f "${TMP}/dist/index.html" ]] || die "前端包缺少 index.html"
 }
@@ -136,10 +156,11 @@ prune_backups() {
 }
 
 update() {
-  fetch_release
+  stage_artifacts
 
   local new_sum old_sum jar_changed=1 dist_changed=0
   new_sum="$(sha256sum "${TMP}/chatshy-server.jar" | cut -d' ' -f1)"
+  if [[ "${RELEASE_TAG}" == "local" ]]; then RELEASE_TAG="local-${new_sum:0:8}"; fi
   if [[ -f "${JAR}" ]]; then
     old_sum="$(sha256sum "${JAR}" | cut -d' ' -f1)"
     if [[ "${old_sum}" == "${new_sum}" ]]; then jar_changed=0; fi
@@ -191,7 +212,11 @@ rollback() {
 
 case "${1:-}" in
   "") update ;;
+  --local)
+    [[ $# -ge 2 && -n "${2:-}" ]] || die "--local 需要指定产物目录，例如: ./update.sh --local /home/ChatShy/upload"
+    LOCAL_DIR="$2"
+    update ;;
   --rollback) rollback ;;
-  -h|--help) sed -n '2,20p' "$0" ;;
-  *) die "未知参数: $1（可用: --rollback）" ;;
+  -h|--help) sed -n '2,21p' "$0" ;;
+  *) die "未知参数: $1（可用: --local DIR、--rollback）" ;;
 esac
