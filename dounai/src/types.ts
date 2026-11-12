@@ -16,6 +16,6 @@ export interface Conversation {
 }
 
 export interface PayloadMessage {
-  role: Role;
+  role: Role | 'system';
   content: string;
 }
