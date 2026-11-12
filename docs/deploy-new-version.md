@@ -118,7 +118,7 @@ pnpm -C dounai build
 - 产物：`server-java/target/chatshy-server.jar` 和 `dounai/dist/`（前端产物被 gitignore，必须在服务器构建或手动拷贝）。
 - 如果服务器没有 pnpm：`corepack enable && corepack prepare pnpm@latest --activate`，或 `npm i -g pnpm`。
 - 可选：上线前跑一次测试 `cd server-java && mvn test`，预期 80 个用例全绿。测试会启动 embedded PostgreSQL，首次运行需要联网下载 PG 二进制；不想下载就直接 `-DskipTests package`。
-- 如果通过 git 部署，确认 `pnpm-lock.yaml` / `pnpm-workspace.yaml` 已提交或在服务器生成。
+- 前端依赖锁文件是 `dounai/pnpm-lock.yaml`（已随仓库提交），无需在仓库根目录生成 lockfile。
 
 ## 6. 启动
 
