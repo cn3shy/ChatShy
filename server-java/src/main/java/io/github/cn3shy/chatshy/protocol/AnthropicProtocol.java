@@ -245,4 +245,8 @@ public final class AnthropicProtocol {
     public static Map<String, Object> blacklisted() {
         return error("invalid_request_error", "该会话已被拉黑，无法继续发送消息");
     }
+
+    public static Map<String, Object> rateLimited() {
+        return error("rate_limit_error", "新建会话过于频繁，请稍后再试");
+    }
 }

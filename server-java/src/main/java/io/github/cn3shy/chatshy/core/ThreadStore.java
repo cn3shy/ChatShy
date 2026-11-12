@@ -129,6 +129,19 @@ public class ThreadStore {
         jdbc.update("UPDATE threads SET blacklisted = ? WHERE id = ?", blacklisted ? 1 : 0, id);
     }
 
+    /** 同一 IP 的时间窗内最多新建会话数；超过即判定为刷会话烧 token，入口直接拒绝。 */
+    public static final int NEW_THREAD_LIMIT_PER_WINDOW = 5;
+    public static final long NEW_THREAD_WINDOW_MS = 60_000;
+
+    /** 该 IP 在时间窗内新建的会话数是否已达上限（达到即拒绝第 limit+1 次）。 */
+    public boolean newThreadLimitReached(String ip) {
+        if (ip == null || ip.isEmpty()) return false;
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM threads WHERE source_ip = ? AND created_at > ?",
+                Long.class, ip, System.currentTimeMillis() - NEW_THREAD_WINDOW_MS);
+        return count != null && count >= NEW_THREAD_LIMIT_PER_WINDOW;
+    }
+
     public ThreadRecord getThread(String id) {
         List<ThreadRecord> rows = jdbc.query("SELECT * FROM threads WHERE id = ?", THREAD_MAPPER, id);
         return rows.isEmpty() ? null : rows.get(0);

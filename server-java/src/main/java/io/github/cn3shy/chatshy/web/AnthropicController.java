@@ -62,6 +62,11 @@ public class AnthropicController {
         String model = value.prompt().model() == null || value.prompt().model().isEmpty()
                 ? settings.getModelName() : value.prompt().model();
         RequestSource source = SourceService.requestSource(request);
+        // IP 限流：时间窗内新建会话过多直接拒绝，防止换着会话刷 token
+        if (threads.newThreadLimitReached(source.ip())) {
+            HttpUtil.writeJson(response, 429, AnthropicProtocol.rateLimited());
+            return;
+        }
         ThreadStore.ResolveResult resolved = threads.resolve(new ThreadStore.ResolveParams(
                 source, ProtocolTypes.ANTHROPIC, model, value.prompt().system(), value.prompt().messages()));
         if (resolved.thread().blacklisted()) {

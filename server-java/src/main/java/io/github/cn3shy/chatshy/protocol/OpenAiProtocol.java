@@ -257,4 +257,8 @@ public final class OpenAiProtocol {
     public static Map<String, Object> blacklisted() {
         return error("该会话已被拉黑，无法继续发送消息", "invalid_request_error", "thread_blacklisted");
     }
+
+    public static Map<String, Object> rateLimited() {
+        return error("新建会话过于频繁，请稍后再试", "rate_limit_error", "rate_limit_exceeded");
+    }
 }
