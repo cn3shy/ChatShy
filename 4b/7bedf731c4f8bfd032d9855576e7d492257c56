@@ -1,0 +1,31 @@
+web/vite.config.ts
+  s_ec960752ec6584::t_5bbcfde49e99b0 16-18
+web/src/main.ts
+  s_ec960752ec6584::t_db97cd08ecff86 2
+web/src/style.css
+  s_ec960752ec6584::t_d1f9e9420adaa8 1-5,7-25,44-46,84,89,102,109,111,114,119-120,125,127,131-138,145,160,173,195,213,217-219,237,243,252,268-269,273,277-279,283-284,296,302-305,320,331-332,345,365,416,447,461,470-473,475,477,482-485,487,499-500,502-504,506,514,516,522-523,538,540-541,546-547,549-552,562-565,587-588,602,607-608,614-616,644,656-657,690,723,751-752,754,757,761-762,826-827,829,832,836-837,845,847,851-855,861,869,879,883,949,956-958,968-969,993,995,1018-1041
+  s_ec960752ec6584::t_1d2fafed5b39d0 480,486,493,505,536-537,539,542-545,548
+  s_ec960752ec6584::t_a4453e8abf49fc 490-491,494
+server-java/src/main/java/io/github/cn3shy/chatshy/web/PageController.java
+  s_ec960752ec6584::t_3ec82cc04b690f 16,29-40,46
+dounai/src/store.ts
+  s_ec960752ec6584::t_adb0b120fa7ead 84-87
+README.md
+  s_ec960752ec6584::t_feb9cc715e2ca5 69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4b7bedf731c4f8bfd032d9855576e7d492257c56",
+  "prompts": {},
+  "sessions": {
+    "s_ec960752ec6584": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce0f9ba7-735e-4de9-9f65-9685329b4066",
+        "model": "glm-5.3-flashx-max"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
