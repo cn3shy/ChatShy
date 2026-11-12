@@ -77,6 +77,20 @@ public class DounaiController {
             return;
         }
 
+        // 与前端双端拦截重复内容：最新一条用户消息不允许与上一条用户消息完全相同
+        String previousUserContent = null;
+        String lastUserContent = null;
+        for (JsonNode message : messages) {
+            if (!"user".equals(message.path("role").asText())) continue;
+            previousUserContent = lastUserContent;
+            JsonNode content = message.path("content");
+            lastUserContent = content.isTextual() ? content.asText() : null;
+        }
+        if (lastUserContent != null && lastUserContent.equals(previousUserContent)) {
+            HttpUtil.writeJson(response, 400, error("不能重复发送相同的内容"));
+            return;
+        }
+
         String callerKey = settings.getCallerKey();
         if (callerKey == null || callerKey.isEmpty()) {
             HttpUtil.writeJson(response, 503, error("服务端尚未配置调用方 Key"));
@@ -113,6 +127,10 @@ public class DounaiController {
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
                 .header("Authorization", "Bearer " + callerKey)
+                // 把访客真实 IP 与浏览器 UA 透传给网关，工作台才能看到访客来源
+                .header("X-Forwarded-For", HttpUtil.clientIp(request))
+                .header("User-Agent", request.getHeader("User-Agent") == null
+                        ? "unknown" : request.getHeader("User-Agent"))
                 .header("X-ChatShy-Caller", HttpUtil.encodeCallerHeader(
                         properties.dounai().caller() == null ? "豆奶" : properties.dounai().caller()))
                 .POST(HttpRequest.BodyPublishers.ofString(Json.stringify(payload), StandardCharsets.UTF_8))
