@@ -7,7 +7,7 @@
 
 ## 运行形态（2026-11-12 起）
 
-后端已切换为 **Spring Boot 3.5.16 / JDK 21**，代码在 `server-java/`；Node 版 `src/` 保留用于回滚与对照。一个 Java 进程同时监听两个站点：
+后端为 **Spring Boot 3.5.16 / JDK 21**，代码在 `server-java/`；Node 版已从仓库移除（回滚副本在仓库外）。一个 Java 进程同时监听两个站点：
 
 | 端口 | 站点 | 内容 |
 | --- | --- | --- |
@@ -22,7 +22,6 @@
 server-java/   Spring Boot 后端（当前线上）
 dounai/        豆奶 Vite + Vue 前端
 web/           操作台 Vite + Vue 前端
-src/           Node 版后端（保留回滚/对照）
 ```
 
 ## 功能
@@ -61,23 +60,6 @@ java -jar server-java/target/chatshy-server.jar
 pnpm -C dounai install
 pnpm -C dounai build     # 产物 dounai/dist，由 Spring Boot 托管
 pnpm -C dounai dev       # http://localhost:5174，/api 代理到 8099
-```
-
-### Node 版（保留作回滚）
-
-```bash
-npm install          # 服务端依赖
-npm --prefix web install   # 前端依赖（首次）
-cp .env.example .env # 可选：设置 ADMIN_PASSWORD；不设则首次启动打印随机密码
-npm run dev          # 服务端 + 操作台 → http://localhost:8088
-```
-
-前端热更新开发：终端 1 `npm run dev`，终端 2 `npm run web:dev` → http://localhost:5173（已代理管理端接口）。
-
-```bash
-npm run build:all    # 前端 + 服务端生产构建
-npm start            # 运行生产产物
-npm test             # Node 版单元 + 集成测试
 ```
 
 ## 使用
@@ -185,20 +167,8 @@ X-ChatShy-Caller: alice
 - 启停：`systemctl restart chatshy`；日志：`journalctl -u chatshy -f`
 - 同一个 Java 进程监听 `8088` 与 `8099`，**不再有 `dounai.service`**
 - `.env` 由 Spring Boot 启动时自动加载；新增的可选变量见下表
-- 回滚备份：`/root/chatshy-java-rollback-2026-11-12/`（Node systemd 单元与说明）、`/home/ChatShy/data/chatshy.db.before-java-2026-11-12`
-
-## 部署（VPS + Docker + Caddy 自动 HTTPS）
-
-1. 服务器装好 Docker 与 Compose；DNS 把你的域名解析到服务器
-2. 拷贝项目到服务器，`cp .env.example .env` 并设置 `ADMIN_PASSWORD`
-3. 编辑 `docker/Caddyfile`，把 `chatshy.example.com` 换成你的域名
-4. `docker compose up -d --build`
-5. 浏览器打开 `https://你的域名` 登录操作台
-
-- 只用内网/HTTP：可以删掉 compose 里的 `caddy` 服务，直接暴露 8088 端口
-- 用 Nginx：参考 `docker/nginx.conf.example`，**必须 `proxy_buffering off`**（SSE 流式），服务端已带 `X-Accel-Buffering: no` 头兜底
-- **必须把真实 IP 转发进来**（`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` 或 `X-Real-IP`，两者服务端都认）。漏了的话操作台上所有来源的 IP 都是 `127.0.0.1`，不同调用方会被当成同一个人
-- 桌面通知需要 HTTPS 上下文（Caddy 自动证书正好满足）
+- 回滚备份：`/root/chatshy-java-rollback-2026-11-12/`（Node 后端源码、旧 systemd 单元、旧 DB 备份与说明）、`/home/ChatShy/data/chatshy.db.before-java-2026-11-12`
+- 反向代理：nginx 仍需保持 `proxy_buffering off`（SSE 流式），并转发真实 IP（`X-Forwarded-For` / `X-Real-IP`）
 
 ## 环境变量（仅作首次启动引导；运行时改请走操作台设置页）
 
@@ -206,7 +176,7 @@ X-ChatShy-Caller: alice
 |---|---|---|
 | `PORT` | `8088` | 网关/操作台监听端口 |
 | `HOST` | `0.0.0.0` | 监听地址；本机经 nginx 反代时设为 `127.0.0.1` |
-| `DB_PATH` | `./data/chatshy.db` | SQLite 文件路径（compose 里设为 `/data/chatshy.db`） |
+| `DB_PATH` | `./data/chatshy.db` | SQLite 文件路径 |
 | `ADMIN_PASSWORD` | 随机生成并打印 | 管理员初始密码（库里已有密码哈希时忽略） |
 | `CALLER_KEY` | 随机生成并打印 | 全局调用方 Key（库里已有则忽略；之后可在设置页改） |
 | `DEFAULT_TIMEOUT_MS` | `180000` | 全局默认挂起超时（毫秒） |
@@ -220,25 +190,24 @@ X-ChatShy-Caller: alice
 
 ## 备份
 
-数据只有一个 SQLite 文件（`data/chatshy.db`）。推荐在线备份：
+数据只有一个 SQLite 文件（`data/chatshy.db`）。无需安装 sqlite3 CLI，用 Python 标准库在线备份：
 
 ```bash
-# 在项目目录（宿主机装了 sqlite3 CLI）
-sqlite3 data/chatshy.db ".backup 'backup-$(date +%F).db'"
+cd /home/ChatShy
+mkdir -p data/backups
+python3 - <<'PY'
+import sqlite3, datetime, pathlib
+target = pathlib.Path('data/backups') / f"chatshy-{datetime.date.today()}.db"
+with sqlite3.connect('data/chatshy.db') as src, sqlite3.connect(target) as dst:
+    src.backup(dst)
+print('backup ->', target)
+PY
 ```
 
-或者停服务直接拷目录：
-
-```bash
-docker compose stop chatshy
-tar czf chatshy-backup-$(date +%F).tgz data/
-docker compose start chatshy
-```
-
-定时任务示例（每天 03:17）：
+停服务直接拷目录也可以（SQLite 有 WAL，建议先 `systemctl stop chatshy`）。定时任务示例（每天 03:17）：
 
 ```
-17 3 * * * cd /opt/chatshy && sqlite3 data/chatshy.db ".backup 'backups/chatshy-$(date +\%F).db'"
+17 3 * * * cd /home/ChatShy && mkdir -p data/backups && python3 -c "import sqlite3,datetime,pathlib; t=pathlib.Path('data/backups')/f'chatshy-{datetime.date.today()}.db'; s=sqlite3.connect('data/chatshy.db'); d=sqlite3.connect(t); s.backup(d); d.close(); s.close()"
 ```
 
 ## 手测清单（接入真实客户端）
@@ -267,17 +236,12 @@ docker compose start chatshy
 
 工具调用（tools / tool_use）、多模态、embeddings、多操作员协作、对话全文搜索、短信/邮件通知。
 
-> 附带一句：流式回复现在是逐帧下发的，因此客户端会把 Markdown 边收边渲染——代码块在开头的 ``` 到达之前会短暂显示成普通文本。这与真实大模型 API 的观感一致，主流客户端都按这个前提写过；如果你更在意代码块一次成型，把 `src/server/serve.ts` 里的 `TYPEWRITER_TICK_MS` 调成 `0` 即可让正文仍分帧但不等待间隔。
+> 附带一句：流式回复现在是逐帧下发的，因此客户端会把 Markdown 边收边渲染——代码块在开头的 ``` 到达之前会短暂显示成普通文本。这与真实大模型 API 的观感一致，主流客户端都按这个前提写过；如果你更在意代码块一次成型，把 `server-java/src/main/java/io/github/cn3shy/chatshy/core/Typewriter.java` 里的节拍调成 `0`（或把 `TYPEWRITER_TICK_MS` 环境变量设为 `0`）即可让正文仍分帧但不等待间隔。
 
 ## 测试
 
 ```bash
-# Java 版（当前线上，70 个 JUnit 用例）
-cd server-java && mvn test
-
-# Node 版（保留）
-npm test
+cd server-java && mvn test   # 70 个 JUnit 用例
 ```
 
-- Java 单元/集成：协议 golden 断言、来源识别与指纹、会话归并、Job 状态机、SQLite 迁移（v1/v2 → v3）、厂商 CRUD、豆奶代理、SSE/打字机/超时/断连、手动与自动转发
-- Node 单元/集成：保留上游原有 vitest 套件，用于对照与回滚
+- 单元/集成：协议 golden 断言、来源识别与指纹、会话归并、Job 状态机、SQLite 迁移（v1/v2 → v3）、厂商 CRUD、豆奶代理、SSE/打字机/超时/断连、手动与自动转发

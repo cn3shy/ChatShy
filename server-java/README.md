@@ -1,6 +1,6 @@
 # ChatShy · Spring Boot 后端
 
-ChatShy 的 JDK 21 / Spring Boot 3.5 实现。与 Node 版（仓库根目录 `src/`）功能对齐，并额外把**豆奶**站点并入同一个进程。
+ChatShy 的 JDK 21 / Spring Boot 3.5 实现。与旧 Node 版功能对齐，并额外把**豆奶**站点并入同一个进程。Node 后端已从仓库移除，回滚副本在仓库外。
 
 ## 端口与站点
 
@@ -90,7 +90,7 @@ RestartSec=3
 
 ## 回滚
 
-Node 版源码、`dist/` 与数据库迁移前的备份均保留：
+Node 版源码、旧豆奶目录、旧 systemd 单元与数据库迁移前的备份均保留在仓库外：
 
-- systemd 单元：`/root/chatshy-java-rollback-2026-11-12/`
+- 回滚目录：`/root/chatshy-java-rollback-2026-11-12/`（`node-backend/`、`dounai-node/`、旧 DB 备份、systemd 单元）
 - 数据库：`/home/ChatShy/data/chatshy.db.before-java-2026-11-12`
