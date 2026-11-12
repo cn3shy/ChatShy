@@ -1,15 +1,28 @@
+/* ============================================================
+   ChatShy 操作台 —— 采用豆奶 (dounai) 的视觉风格
+   浅色、圆角、柔和的蓝色点缀（与 dounai/src/style.css 同一套色板）
+   ============================================================ */
+
 :root {
-  --bg: #0f1218;
-  --panel: #161b24;
-  --panel-2: #1c2230;
-  --border: #262e3d;
-  --text: #e6e9ef;
-  --muted: #8b94a7;
-  --accent: #4f8cff;
-  --accent-2: #7aa8ff;
-  --danger: #ff6b6b;
-  --ok: #3ecf8e;
-  --warn: #f5b544;
+  --bg: #f3f5f9;
+  --panel: #ffffff;
+  --panel-2: #f7f8fc;
+  --border: #e8ecf3;
+  --border-strong: #dbe2ee;
+  --text: #1f2329;
+  --muted: #5c6370;
+  --faint: #9aa2b1;
+  --accent: #5b8def;
+  --accent-2: #4a7de0;
+  --accent-soft: #eef4ff;
+  --danger: #b3261e;
+  --danger-bg: #fff4f3;
+  --danger-line: #f3c7c3;
+  --ok: #1a7f37;
+  --warn: #b45309;
+  --warn-bg: #fffcf2;
+  --warn-line: #efe4c8;
+  --bubble-user: #f5f8fd;
   font-size: 15px;
 }
 
@@ -28,7 +41,9 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Noto Sans CJK SC', sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 button {
@@ -66,11 +81,12 @@ code {
   width: min(360px, 90vw);
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 32px 28px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  box-shadow: 0 10px 30px rgba(91, 141, 239, 0.12);
 }
 
 .login-card h1 {
@@ -83,39 +99,50 @@ code {
 
 .login-card .sub {
   margin: 0 0 6px;
-  color: var(--muted);
+  color: var(--faint);
   font-size: 0.9rem;
 }
 
 .login-card input,
 .key-form input {
   background: var(--panel-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   color: var(--text);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 10px 12px;
   outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .login-card input:focus,
 .key-form input:focus {
-  border-color: var(--accent);
+  border-color: #a9c4f2;
+  box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.12);
 }
 
 .login-card button,
 .primary-btn {
-  background: var(--accent);
+  background: linear-gradient(135deg, #6f9ff2, var(--accent-2));
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 10px 12px;
   color: #fff;
   font-weight: 600;
+  box-shadow: 0 3px 12px rgba(91, 141, 239, 0.28);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.login-card button:hover:not(:disabled),
+.primary-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 16px rgba(91, 141, 239, 0.36);
 }
 
 .login-card button:disabled,
 .primary-btn:disabled {
   opacity: 0.5;
   cursor: default;
+  box-shadow: none;
 }
 
 .err {
@@ -130,7 +157,7 @@ code {
   height: 10px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 10px var(--accent);
+  box-shadow: 0 0 10px rgba(91, 141, 239, 0.8);
 }
 
 /* ---- 布局 ---- */
@@ -143,7 +170,7 @@ code {
 
 .sidebar {
   border-right: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--panel-2);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -165,7 +192,7 @@ code {
 }
 
 .logo-badge {
-  background: var(--danger);
+  background: var(--accent);
   color: #fff;
   font-size: 0.75rem;
   border-radius: 999px;
@@ -183,11 +210,13 @@ code {
   border-radius: 8px;
   padding: 4px 8px;
   font-size: 1rem;
+  color: var(--muted);
 }
 
 .icon-btn:hover {
-  background: var(--panel-2);
-  border-color: var(--border);
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent-2);
 }
 
 /* ---- 会话列表 ---- */
@@ -205,12 +234,13 @@ code {
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 5px;
   cursor: pointer;
+  color: var(--muted);
 }
 
 /* 删除按钮：平时隐去但占位（避免 hover 时行内元素跳动），悬停或键盘聚焦时才可用 */
@@ -219,7 +249,7 @@ code {
   padding: 0 5px;
   font-size: 0.78rem;
   line-height: 1.5;
-  color: var(--muted);
+  color: var(--faint);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -235,21 +265,23 @@ code {
 
 .thread-item .thread-del:hover {
   color: var(--danger);
-  border-color: var(--danger);
+  border-color: var(--danger-line);
+  background: var(--danger-bg);
 }
 
 .thread-item:hover {
-  background: var(--panel-2);
+  background: #eef1f8;
 }
 
 .thread-item.selected {
-  background: var(--panel-2);
-  border-color: var(--accent);
+  background: #e8effc;
+  border-color: transparent;
+  color: var(--accent-2);
 }
 
 .thread-item.pending {
-  background: rgba(245, 181, 68, 0.08);
-  border-color: rgba(245, 181, 68, 0.45);
+  background: var(--warn-bg);
+  border-color: var(--warn-line);
 }
 
 .thread-item .row1 {
@@ -261,9 +293,14 @@ code {
 
 .thread-item .title {
   font-weight: 600;
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.thread-item.selected .title {
+  color: var(--accent-2);
 }
 
 .thread-item .countdown {
@@ -280,7 +317,7 @@ code {
 }
 
 .tag {
-  background: var(--panel-2);
+  background: #fff;
   border: 1px solid var(--border);
   color: var(--muted);
   border-radius: 999px;
@@ -291,8 +328,8 @@ code {
 /* 来源标签：客户端名用强调色，IP 用等宽字 */
 .tag.source {
   color: var(--accent-2);
-  border-color: rgba(79, 140, 255, 0.35);
-  background: rgba(79, 140, 255, 0.1);
+  border-color: rgba(91, 141, 239, 0.35);
+  background: rgba(91, 141, 239, 0.08);
   max-width: 11rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -305,7 +342,7 @@ code {
 }
 
 .thread-item .time {
-  color: var(--muted);
+  color: var(--faint);
   font-size: 0.75rem;
   margin-left: auto;
 }
@@ -325,6 +362,7 @@ code {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  background: var(--panel);
 }
 
 .empty {
@@ -375,7 +413,7 @@ code {
 }
 
 .empty-hint {
-  color: var(--muted);
+  color: var(--faint);
   text-align: center;
   padding: 20px;
   font-size: 0.9rem;
@@ -406,7 +444,7 @@ code {
   display: flex;
   gap: 8px;
   align-items: baseline;
-  color: var(--muted);
+  color: var(--faint);
   font-size: 0.78rem;
 }
 
@@ -420,7 +458,7 @@ code {
 }
 
 .msg-time {
-  color: var(--muted);
+  color: var(--faint);
   font-size: 0.72rem;
 }
 
@@ -429,28 +467,43 @@ code {
 }
 
 .msg-body {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  background: var(--bubble-user);
+  border: 1px solid #e9eef7;
+  border-radius: 16px;
+  border-top-left-radius: 5px;
   padding: 10px 14px;
-  line-height: 1.65;
+  line-height: 1.7;
   overflow-wrap: anywhere;
+  box-shadow: 0 1px 4px rgba(31, 35, 41, 0.04);
 }
 
+/* 调用方（人类）的消息 = 豆奶里访客的蓝色渐变气泡 */
 .msg.user .msg-body {
-  border-top-left-radius: 4px;
+  background: linear-gradient(135deg, #6f9ff2, var(--accent-2));
+  border-color: transparent;
+  color: #fff;
+  border-radius: 16px;
+  border-top-left-radius: 5px;
+  box-shadow: 0 3px 12px rgba(91, 141, 239, 0.28);
 }
 
+/* 操作员 / AI 的回复 = 豆奶里 AI 的浅色气泡（代码块用浅色高亮，可读性优先）；
+   回复靠右对齐，尖角在右上，与调用方的左上尖角成镜像 */
 .msg.assistant .msg-body {
-  background: rgba(79, 140, 255, 0.12);
-  border-color: rgba(79, 140, 255, 0.35);
-  border-top-right-radius: 4px;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 5px;
 }
 
 .msg.system .msg-body {
   background: transparent;
-  border-style: dashed;
+  border: 1px dashed var(--border-strong);
+  box-shadow: none;
   font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.msg.user .msg-sender {
+  color: var(--accent-2);
 }
 
 .msg-body p {
@@ -458,16 +511,16 @@ code {
 }
 
 .msg-body pre.hljs {
-  background: #0d1117;
+  background: #f6f8fb;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 10px 12px;
   overflow-x: auto;
 }
 
 .msg-body code {
-  background: rgba(255, 255, 255, 0.07);
-  border-radius: 4px;
+  background: rgba(91, 141, 239, 0.1);
+  border-radius: 5px;
   padding: 0.1em 0.35em;
 }
 
@@ -480,6 +533,23 @@ code {
   color: var(--accent-2);
 }
 
+/* 蓝色气泡里，行内代码换白色半透明；围栏代码块用白卡片 + 浅色高亮 */
+.msg.user .msg-body code {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.msg.user .msg-body pre.hljs {
+  background: #fff;
+  border-color: rgba(255, 255, 255, 0.6);
+  color: var(--text);
+}
+
+.msg.user .msg-body a {
+  color: #fff;
+  text-decoration: underline;
+}
+
 /* ---- 等待条 & 输入框 ---- */
 
 .pending-bar {
@@ -489,10 +559,10 @@ code {
   gap: 10px;
   margin: 0 20px 10px;
   padding: 10px 14px;
-  border-radius: 10px;
-  background: rgba(245, 181, 68, 0.1);
-  border: 1px solid rgba(245, 181, 68, 0.4);
-  color: var(--warn);
+  border-radius: 12px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  color: #7a6428;
   font-size: 0.9rem;
 }
 
@@ -514,8 +584,8 @@ code {
 }
 
 .provider-select {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  background: #fff;
+  border: 1px solid var(--border-strong);
   color: var(--text);
   border-radius: 8px;
   padding: 4px 8px;
@@ -529,20 +599,21 @@ code {
 
 .ai-reply-btn {
   color: var(--accent-2);
-  border-color: rgba(79, 140, 255, 0.45);
+  border-color: rgba(91, 141, 239, 0.45);
 }
 
 .ai-reply-btn:hover:not(:disabled) {
   color: #fff;
-  background: rgba(79, 140, 255, 0.2);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .forward-error-row {
   margin: -4px 20px 10px;
   padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 107, 107, 0.45);
-  background: rgba(255, 107, 107, 0.08);
+  border-radius: 10px;
+  border: 1px solid var(--danger-line);
+  background: var(--danger-bg);
   color: var(--danger);
   font-size: 0.84rem;
   overflow-wrap: anywhere;
@@ -570,7 +641,7 @@ code {
 }
 
 .auto-forward-toggle input {
-  accent-color: var(--ok);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -582,8 +653,8 @@ code {
 .auto-forward-provider {
   flex: 1;
   min-width: 90px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  background: #fff;
+  border: 1px solid var(--border-strong);
   color: var(--text);
   border-radius: 8px;
   padding: 4px 8px;
@@ -616,7 +687,7 @@ code {
   justify-content: space-between;
   background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px 12px;
 }
 
@@ -649,7 +720,7 @@ code {
 }
 
 .provider-form {
-  border-top: 1px dashed var(--border);
+  border-top: 1px dashed var(--border-strong);
   padding-top: 10px;
 }
 
@@ -677,16 +748,18 @@ code {
 }
 
 .provider-form-grid input {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  background: #fff;
+  border: 1px solid var(--border-strong);
   color: var(--text);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 8px 10px;
   outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .provider-form-grid input:focus {
-  border-color: var(--accent);
+  border-color: #a9c4f2;
+  box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.1);
 }
 
 .provider-form-actions {
@@ -750,16 +823,18 @@ code {
   resize: vertical;
   min-height: 64px;
   max-height: 240px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  background: #fff;
+  border: 1.5px solid var(--border-strong);
   color: var(--text);
-  border-radius: 10px;
+  border-radius: 14px;
   padding: 10px 12px;
   outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .composer textarea:focus {
-  border-color: var(--accent);
+  border-color: #a9c4f2;
+  box-shadow: 0 4px 18px rgba(91, 141, 239, 0.14);
 }
 
 .composer textarea:disabled {
@@ -767,17 +842,23 @@ code {
 }
 
 .send-btn {
-  background: var(--accent);
+  background: linear-gradient(135deg, #6f9ff2, var(--accent-2));
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 12px 22px;
   color: #fff;
   font-weight: 600;
+  box-shadow: 0 3px 12px rgba(91, 141, 239, 0.3);
+}
+
+.send-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
 }
 
 .send-btn:disabled {
   opacity: 0.45;
   cursor: default;
+  box-shadow: none;
 }
 
 /* ---- 弹窗 ---- */
@@ -785,7 +866,7 @@ code {
 .modal-mask {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(15, 23, 42, 0.35);
   display: grid;
   place-items: center;
   z-index: 50;
@@ -795,10 +876,11 @@ code {
 .modal {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 16px;
   width: min(520px, 100%);
   max-height: 88vh;
   overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
 }
 
 .modal.wide {
@@ -864,15 +946,16 @@ code {
 
 .ghost-btn {
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 5px 10px;
   color: var(--muted);
 }
 
 .ghost-btn:hover {
-  color: var(--text);
-  border-color: var(--accent);
+  color: var(--accent-2);
+  border-color: #c6d8f7;
+  background: var(--accent-soft);
 }
 
 .ghost-btn.small {
@@ -882,7 +965,8 @@ code {
 
 .ghost-btn.danger:hover {
   color: var(--danger);
-  border-color: var(--danger);
+  border-color: var(--danger-line);
+  background: var(--danger-bg);
 }
 
 /* 设置页「复制接入配置」那一行 */
@@ -906,9 +990,9 @@ code {
   flex: 1;
   min-width: 220px;
   background: rgba(62, 207, 142, 0.08);
-  border: 1px solid rgba(62, 207, 142, 0.4);
+  border: 1px solid rgba(26, 127, 55, 0.35);
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow-wrap: anywhere;
   user-select: all;
 }
@@ -930,4 +1014,28 @@ code {
   .msg {
     max-width: 92%;
   }
+}
+
+/* ---- 滚动条（浅色） ---- */
+
+.thread-list::-webkit-scrollbar,
+.messages::-webkit-scrollbar,
+.modal::-webkit-scrollbar {
+  width: 8px;
+}
+
+.thread-list::-webkit-scrollbar-thumb,
+.messages::-webkit-scrollbar-thumb,
+.modal::-webkit-scrollbar-thumb {
+  background: #d8dfeb;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.thread-list::-webkit-scrollbar-thumb:hover,
+.messages::-webkit-scrollbar-thumb:hover,
+.modal::-webkit-scrollbar-thumb:hover {
+  background: #c3cdde;
+  background-clip: content-box;
 }

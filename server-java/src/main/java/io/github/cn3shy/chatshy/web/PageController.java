@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import io.github.cn3shy.chatshy.config.ChatShyProperties;
 import jakarta.servlet.http.HttpServletRequest;
 
-/** 按端口分站点：8088 操作台首页，8099 豆奶首页。 */
+/** 按端口分站点：8088 操作台首页，8099 豆奶首页；/admin 在两个端口都可打开操作台。 */
 @Controller
 public class PageController {
     private final ChatShyProperties properties;
@@ -26,15 +26,24 @@ public class PageController {
     public ResponseEntity<?> index(HttpServletRequest request) {
         ChatShyProperties.Dounai dounai = properties.dounai();
         boolean isDounai = dounai != null && dounai.enabled() && request.getLocalPort() == dounai.port();
+        return serveIndex(isDounai, isDounai
+                ? "豆奶前端尚未构建：请先执行 npm run dounai:web:build"
+                : "操作台前端尚未构建：请先执行 npm run web:build");
+    }
+
+    /** 操作台页面：dounai.chat/admin 与 ai.3shy.cn/admin 共用同一个构建产物。 */
+    @GetMapping({"/admin", "/admin/"})
+    public ResponseEntity<?> admin() {
+        return serveIndex(false, "操作台前端尚未构建：请先执行 npm run web:build");
+    }
+
+    private ResponseEntity<?> serveIndex(boolean isDounai, String missingHint) {
         Path index = Path.of(isDounai ? "dounai/dist/index.html" : "web/dist/index.html");
         if (!Files.isRegularFile(index)) {
-            String hint = isDounai
-                    ? "豆奶前端尚未构建：请先执行 npm run dounai:web:build"
-                    : "操作台前端尚未构建：请先执行 npm run web:build";
             return ResponseEntity.status(503)
                     .cacheControl(org.springframework.http.CacheControl.noStore())
                     .contentType(new MediaType("text", "plain", java.nio.charset.StandardCharsets.UTF_8))
-                    .body(hint);
+                    .body(missingHint);
         }
         try {
             byte[] body = Files.readAllBytes(index);

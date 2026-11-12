@@ -66,7 +66,7 @@ pnpm -C dounai dev       # http://localhost:5174，/api 代理到 8099
 
 ### 操作台
 
-打开 `http://localhost:8088`（或你的域名），用管理员密码登录：
+打开 `http://localhost:8088`（或你的域名），用管理员密码登录。同一操作台页面也挂在 `/admin` 路径下：`ai.3shy.cn/admin` 与 `dounai.chat/admin` 都能打开，方便与豆奶共用一个域名入口。
 
 - 左侧：会话列表。**未回复的置顶、红点、剩余秒数倒计时**；每条显示请求来源（名字/客户端 + IP）、最后消息，悬停行首出现 ✕ 可删除
 - 右侧：对话视图 + 底部输入框（Enter 发送，Shift+Enter 换行，支持 Markdown）

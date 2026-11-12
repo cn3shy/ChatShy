@@ -13,5 +13,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // /admin 页在豆奶站点（dounai.chat/admin，CSP 为 script-src 'self'）也能打开，
+    // 不能有 Vite 注入的内联 modulepreload polyfill，与 dounai 保持一致
+    modulePreload: { polyfill: false },
   },
 });

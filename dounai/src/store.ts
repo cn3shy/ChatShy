@@ -81,8 +81,10 @@ export async function send(text: string): Promise<void> {
 }
 
 async function generate(conversation: Conversation): Promise<void> {
-  const placeholder: ChatMessage = { role: 'assistant', content: '', reasoning: '' };
-  conversation.messages.push(placeholder);
+  conversation.messages.push({ role: 'assistant', content: '', reasoning: '' });
+  // 必须从 reactive 数组取回代理对象：直接持有原始对象引用的写入
+  // 不会触发 Vue 的依赖更新，界面会一直空白到流结束
+  const placeholder = conversation.messages[conversation.messages.length - 1]!;
 
   state.streaming = true;
   abortCtl = new AbortController();
