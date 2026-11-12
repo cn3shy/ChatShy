@@ -20,7 +20,7 @@ import io.github.cn3shy.chatshy.protocol.ProtocolTypes.ChatMessage;
 public class ThreadStore {
     public record ThreadRecord(String id, String title, String protocol, String model, String fingerprint,
                                String sourceIp, String sourceUa, String sourceClient, String sourceFingerprint,
-                               long createdAt, long updatedAt) {
+                               boolean blacklisted, long createdAt, long updatedAt) {
     }
 
     public record MessageRecord(String id, String threadId, String role, String content, String source,
@@ -38,7 +38,7 @@ public class ThreadStore {
             rs.getString("id"), rs.getString("title"), rs.getString("protocol"), rs.getString("model"),
             rs.getString("fingerprint"), rs.getString("source_ip"), rs.getString("source_ua"),
             rs.getString("source_client"), rs.getString("source_fingerprint"),
-            rs.getLong("created_at"), rs.getLong("updated_at"));
+            rs.getInt("blacklisted") != 0, rs.getLong("created_at"), rs.getLong("updated_at"));
 
     private static final RowMapper<MessageRecord> MESSAGE_MAPPER = (rs, i) -> new MessageRecord(
             rs.getString("id"), rs.getString("thread_id"), rs.getString("role"), rs.getString("content"),
@@ -94,7 +94,7 @@ public class ThreadStore {
             ThreadRecord refreshed = new ThreadRecord(
                     matched.id(), matched.title(), matched.protocol(), matched.model(), matched.fingerprint(),
                     params.source().ip(), params.source().ua(), params.source().client(),
-                    matched.sourceFingerprint(), matched.createdAt(), now);
+                    matched.sourceFingerprint(), matched.blacklisted(), matched.createdAt(), now);
             return new ResolveResult(refreshed, appended);
         }
 
@@ -122,6 +122,11 @@ public class ThreadStore {
 
     public boolean deleteThread(String id) {
         return jdbc.update("DELETE FROM threads WHERE id = ?", id) > 0;
+    }
+
+    /** 拉黑 / 解除拉黑：被拉黑的会话在网关入口直接被拒绝，不再产生新请求。 */
+    public void setBlacklisted(String id, boolean blacklisted) {
+        jdbc.update("UPDATE threads SET blacklisted = ? WHERE id = ?", blacklisted ? 1 : 0, id);
     }
 
     public ThreadRecord getThread(String id) {

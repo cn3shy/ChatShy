@@ -65,6 +65,10 @@ public class OpenAiController {
         RequestSource source = SourceService.requestSource(request);
         ThreadStore.ResolveResult resolved = threads.resolve(new ThreadStore.ResolveParams(
                 source, ProtocolTypes.OPENAI, model, value.prompt().system(), value.prompt().messages()));
+        if (resolved.thread().blacklisted()) {
+            HttpUtil.writeJson(response, 403, OpenAiProtocol.blacklisted());
+            return;
+        }
 
         String requestJson = body == null || body.isNull() ? "{}" : body.toString();
         PendingJob job = queue.create(resolved.thread().id(), ProtocolTypes.OPENAI,

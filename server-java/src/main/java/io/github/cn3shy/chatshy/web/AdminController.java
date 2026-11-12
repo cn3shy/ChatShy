@@ -49,7 +49,8 @@ public class AdminController {
     private record ThreadListRow(String id, String title, String protocol, String model,
                                  long createdAt, long updatedAt, String sourceIp, String sourceUa,
                                  String sourceClient, String sourceFingerprint, String lastContent,
-                                 int pendingCount, String pendingJobId, Long pendingDeadline) {
+                                 boolean blacklisted, int pendingCount, String pendingJobId,
+                                 Long pendingDeadline) {
     }
 
     private record JobBrief(String id, String status, String via) {
@@ -179,6 +180,7 @@ public class AdminController {
                 SELECT t.id, t.title, t.protocol, t.model, t.created_at, t.updated_at,
                        t.source_ip, t.source_ua, t.source_client, t.source_fingerprint,
                        (SELECT content FROM messages m WHERE m.thread_id = t.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS last_content,
+                       t.blacklisted,
                        (SELECT COUNT(*) FROM jobs j WHERE j.thread_id = t.id AND j.status = 'pending') AS pending_count,
                        (SELECT j.id FROM jobs j WHERE j.thread_id = t.id AND j.status = 'pending' ORDER BY j.created_at DESC LIMIT 1) AS pending_job_id,
                        (SELECT j.deadline_at FROM jobs j WHERE j.thread_id = t.id AND j.status = 'pending' ORDER BY j.created_at DESC LIMIT 1) AS pending_deadline
@@ -189,8 +191,8 @@ public class AdminController {
                 rs.getString("id"), rs.getString("title"), rs.getString("protocol"), rs.getString("model"),
                 rs.getLong("created_at"), rs.getLong("updated_at"), rs.getString("source_ip"),
                 rs.getString("source_ua"), rs.getString("source_client"), rs.getString("source_fingerprint"),
-                rs.getString("last_content"), rs.getInt("pending_count"), rs.getString("pending_job_id"),
-                (Long) rs.getObject("pending_deadline")));
+                rs.getString("last_content"), rs.getInt("blacklisted") != 0, rs.getInt("pending_count"),
+                rs.getString("pending_job_id"), (Long) rs.getObject("pending_deadline")));
 
         List<Map<String, Object>> list = new ArrayList<>();
         for (ThreadListRow row : rows) {
@@ -205,6 +207,7 @@ public class AdminController {
             item.put("createdAt", row.createdAt());
             item.put("updatedAt", row.updatedAt());
             item.put("lastMessage", row.lastContent() == null ? "" : row.lastContent());
+            item.put("blacklisted", row.blacklisted());
             item.put("pendingCount", row.pendingCount());
             item.put("pendingJobId", row.pendingJobId());
             item.put("pendingDeadlineAt", row.pendingDeadline());
@@ -269,6 +272,7 @@ public class AdminController {
         threadMap.put("sourceUa", thread.sourceUa());
         threadMap.put("createdAt", thread.createdAt());
         threadMap.put("updatedAt", thread.updatedAt());
+        threadMap.put("blacklisted", thread.blacklisted());
 
         Map<String, Object> body = Json.obj();
         body.put("thread", threadMap);
@@ -284,6 +288,17 @@ public class AdminController {
         threads.deleteThread(id);
         hub.broadcast(HubEvent.threadDeleted(id));
         return ResponseEntity.ok(Map.of("ok", true, "failedJobs", failed));
+    }
+
+    /** 拉黑 / 解除拉黑：被拉黑的会话在网关入口直接收到 403，不再产生待回复请求。 */
+    @PostMapping("/admin/api/threads/{id}/blacklist")
+    public ResponseEntity<?> blacklistThread(@PathVariable String id,
+                                             @RequestBody(required = false) byte[] rawBody) {
+        if (threads.getThread(id) == null) return ResponseEntity.status(404).body(Map.of("error", "not_found"));
+        JsonNode body = Json.tryParse(Json.utf8(rawBody));
+        boolean blacklisted = body != null && body.path("blacklisted").asBoolean(false);
+        threads.setBlacklisted(id, blacklisted);
+        return ResponseEntity.ok(Map.of("ok", true, "blacklisted", blacklisted));
     }
 
     // ---- 回复 / 忽略 / 转发 ----

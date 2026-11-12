@@ -64,6 +64,10 @@ public class AnthropicController {
         RequestSource source = SourceService.requestSource(request);
         ThreadStore.ResolveResult resolved = threads.resolve(new ThreadStore.ResolveParams(
                 source, ProtocolTypes.ANTHROPIC, model, value.prompt().system(), value.prompt().messages()));
+        if (resolved.thread().blacklisted()) {
+            HttpUtil.writeJson(response, 403, AnthropicProtocol.blacklisted());
+            return;
+        }
 
         String requestJson = body == null || body.isNull() ? "{}" : body.toString();
         PendingJob job = queue.create(resolved.thread().id(), ProtocolTypes.ANTHROPIC,

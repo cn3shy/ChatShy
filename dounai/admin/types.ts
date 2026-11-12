@@ -17,6 +17,8 @@ export interface ThreadSummary extends ThreadSource {
   createdAt: number;
   updatedAt: number;
   lastMessage: string;
+  /** 已拉黑：网关入口直接拒绝该会话的新请求 */
+  blacklisted: boolean;
   pendingCount: number;
   pendingJobId: string | null;
   pendingDeadlineAt: number | null;
@@ -71,6 +73,7 @@ export interface ThreadDetail {
     model: string;
     createdAt: number;
     updatedAt: number;
+    blacklisted: boolean;
   };
   messages: Message[];
   pendingJobs: PendingJob[];

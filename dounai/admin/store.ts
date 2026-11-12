@@ -140,6 +140,14 @@ export async function deleteThread(id: string): Promise<void> {
   await refreshThreads();
 }
 
+/** 拉黑 / 解除拉黑会话；被拉黑会话的新请求会在网关入口直接被拒绝。 */
+export async function blacklistThread(id: string, blacklisted: boolean): Promise<void> {
+  await api.blacklistThread(id, blacklisted);
+  const summary = state.threads.find((t) => t.id === id);
+  if (summary !== undefined) summary.blacklisted = blacklisted;
+  if (state.detail?.thread.id === id) state.detail.thread.blacklisted = blacklisted;
+}
+
 /** 回复当前会话最新的挂起请求。AI 正在流式回复时服务端会拒绝，错误交给界面展示。 */
 export async function reply(content: string): Promise<{ delivered: boolean; error?: string } | null> {
   const job = state.detail?.pendingJobs.at(-1);

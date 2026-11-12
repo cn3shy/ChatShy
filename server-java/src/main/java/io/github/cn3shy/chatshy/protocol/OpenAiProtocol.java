@@ -253,4 +253,8 @@ public final class OpenAiProtocol {
     public static Map<String, Object> upstreamFailure() {
         return error("The upstream model failed while generating a response.", "server_error", "upstream_error");
     }
+
+    public static Map<String, Object> blacklisted() {
+        return error("该会话已被拉黑，无法继续发送消息", "invalid_request_error", "thread_blacklisted");
+    }
 }

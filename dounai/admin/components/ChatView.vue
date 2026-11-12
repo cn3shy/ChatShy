@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import { renderMarkdown } from '../markdown';
-import { forwardJob, ignoreJob, remainingSeconds, reply, state } from '../store';
+import { blacklistThread, forwardJob, ignoreJob, remainingSeconds, reply, state } from '../store';
 import type { ThreadDetail } from '../types';
 import Composer from './Composer.vue';
 
@@ -10,6 +10,20 @@ const props = defineProps<{ detail: ThreadDetail; now: number }>();
 const pendingJob = computed(() => props.detail.pendingJobs.at(-1) ?? null);
 const pendingCount = computed(() => props.detail.pendingJobs.length);
 const canReply = computed(() => pendingJob.value !== null);
+
+const blacklisted = computed(() => props.detail.thread.blacklisted);
+
+async function toggleBlacklist(): Promise<void> {
+  const next = !blacklisted.value;
+  if (next && !confirm(`拉黑会话「${props.detail.thread.title || '无标题'}」？\n拉黑后该会话的新请求会被直接拒绝（403），随时可解除。`)) {
+    return;
+  }
+  try {
+    await blacklistThread(props.detail.thread.id, next);
+  } catch {
+    alert(next ? '拉黑失败，请刷新页面后重试' : '解除拉黑失败，请刷新页面后重试');
+  }
+}
 
 const listEl = ref<HTMLElement | null>(null);
 const selectedProviderId = ref('');
@@ -83,7 +97,10 @@ function senderLabel(m: ThreadDetail['messages'][number]): string {
   <div class="chat">
     <header class="chat-head">
       <div>
-        <div class="chat-title">{{ detail.thread.title || '（无标题）' }}</div>
+        <div class="chat-title">
+          {{ detail.thread.title || '（无标题）' }}
+          <span v-if="blacklisted" class="tag blacklisted-tag">已拉黑</span>
+        </div>
         <div class="chat-sub">
           <span class="tag source" :title="detail.thread.sourceUa">
             {{ detail.thread.sourceClient || '未知来源' }}
@@ -93,6 +110,9 @@ function senderLabel(m: ThreadDetail['messages'][number]): string {
           <span v-if="detail.thread.model" class="tag">{{ detail.thread.model }}</span>
         </div>
       </div>
+      <button class="ghost-btn small ban-btn" :class="{ on: blacklisted }" @click="toggleBlacklist">
+        {{ blacklisted ? '解除拉黑' : '拉黑会话' }}
+      </button>
     </header>
 
     <div ref="listEl" class="messages">

@@ -241,4 +241,8 @@ public final class AnthropicProtocol {
     public static Map<String, Object> upstreamFailure() {
         return error("api_error", "Upstream model failed while generating a response.");
     }
+
+    public static Map<String, Object> blacklisted() {
+        return error("invalid_request_error", "该会话已被拉黑，无法继续发送消息");
+    }
 }

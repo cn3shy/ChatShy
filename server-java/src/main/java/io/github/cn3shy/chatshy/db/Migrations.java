@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class Migrations {
-    public static final int SCHEMA_VERSION = 3;
+    public static final int SCHEMA_VERSION = 4;
 
     private final DataSource dataSource;
     private final JdbcTemplate jdbc;
@@ -174,6 +174,11 @@ public class Migrations {
             ALTER TABLE jobs ADD COLUMN provider_id      TEXT;
             ALTER TABLE jobs ADD COLUMN forward_error    TEXT;
             ALTER TABLE jobs ADD COLUMN forward_error_at INTEGER;
+            """,
+
+            """
+            ALTER TABLE threads ADD COLUMN blacklisted INTEGER NOT NULL DEFAULT 0;
+            CREATE INDEX IF NOT EXISTS idx_threads_blacklisted ON threads(blacklisted);
             """,
     };
 }

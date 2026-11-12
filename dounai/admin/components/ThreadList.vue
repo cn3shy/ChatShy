@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { deleteThread, remainingSeconds } from '../store';
+import { blacklistThread, deleteThread, remainingSeconds } from '../store';
 import type { ThreadSummary } from '../types';
 
 defineProps<{ threads: ThreadSummary[]; selectedId: string | null; now: number }>();
@@ -23,6 +23,23 @@ async function onDelete(t: ThreadSummary): Promise<void> {
     alert('删除失败，请刷新页面后重试');
   }
 }
+
+async function onBlacklist(t: ThreadSummary): Promise<void> {
+  if (t.blacklisted) {
+    try {
+      await blacklistThread(t.id, false);
+    } catch {
+      alert('解除拉黑失败，请刷新页面后重试');
+    }
+    return;
+  }
+  if (!confirm(`拉黑会话「${t.title || '无标题'}」？\n拉黑后该会话的新请求会被直接拒绝（403），随时可解除。`)) return;
+  try {
+    await blacklistThread(t.id, true);
+  } catch {
+    alert('拉黑失败，请刷新页面后重试');
+  }
+}
 </script>
 
 <template>
@@ -33,7 +50,7 @@ async function onDelete(t: ThreadSummary): Promise<void> {
       v-for="t in threads"
       :key="t.id"
       class="thread-item"
-      :class="{ selected: t.id === selectedId, pending: t.pendingCount > 0 }"
+      :class="{ selected: t.id === selectedId, pending: t.pendingCount > 0, blacklisted: t.blacklisted }"
       role="button"
       tabindex="0"
       @click="$emit('select', t.id)"
@@ -42,9 +59,15 @@ async function onDelete(t: ThreadSummary): Promise<void> {
     >
       <div class="row1">
         <span class="title">{{ t.title || '（无标题）' }}</span>
+        <span v-if="t.blacklisted" class="tag blacklisted-tag" title="已拉黑：该会话的新请求会被直接拒绝">已拉黑</span>
         <span v-if="t.pendingCount > 0 && t.pendingDeadlineAt !== null" class="countdown">
           ⏳ {{ remainingSeconds(t.pendingDeadlineAt, now) }}s
         </span>
+        <button
+          class="thread-del thread-ban"
+          :title="t.blacklisted ? '解除拉黑' : '拉黑这条会话'"
+          @click.stop="onBlacklist(t)"
+        >{{ t.blacklisted ? '✓' : '🚫' }}</button>
         <button class="thread-del" title="删除这条会话" @click.stop="onDelete(t)">✕</button>
       </div>
       <div class="row2">
