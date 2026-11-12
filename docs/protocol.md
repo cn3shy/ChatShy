@@ -118,9 +118,12 @@ Cookie 会话鉴权。事件之外的全部接口返回 JSON。
 | `POST /admin/api/logout` | 销毁会话 |
 | `GET /admin/api/me` | 会话有效性探测 → `{ok: true}` |
 | `GET /admin/api/events` | SSE 实时事件流（见下） |
+| `GET /admin/api/requests` | 请求监控列表；`limit`/`offset`/`status`/`protocol`/`q`，返回 `{total, limit, offset, requests}` |
+| `GET /admin/api/requests/{id}` | 单条请求详情：完整 `requestJson`、回复内容、来源与转发信息 |
 | `GET /admin/api/threads` | 会话列表（含来源、最后消息、挂起数与截止时间） |
 | `GET /admin/api/threads/{id}` | 会话详情：`{thread, messages, pendingJobs}` |
 | `DELETE /admin/api/threads/{id}` | 删除会话；挂起请求按超时收尾 → `{ok, failedJobs}` |
+| `DELETE /admin/api/threads` | 批量删除会话，body `{ids: [...]}`，单次最多 500 条 → `{ok, deleted, failedJobs}` |
 | `POST /admin/api/jobs/{id}/reply` | `{content}` 人工回复挂起请求 → `{ok, delivered}`；请求已超时则只存档，`delivered: false`；AI 正在流式回复时 `409` |
 | `POST /admin/api/jobs/{id}/ignore` | 忽略挂起请求 |
 | `POST /admin/api/jobs/{id}/forward` | `{providerId}` 用指定 AI 厂商直接回复 → `{ok, delivered, content, providerName}`；上游失败 `502`，请求留在待回复列表 |
@@ -153,7 +156,9 @@ Cookie 会话鉴权。事件之外的全部接口返回 JSON。
 | `GET /api/config` | `{model: 全局模型名}` |
 | `POST /api/chat` | `{messages: [{role, content}]}`；服务端注入 Key 与身份头后转发到网关，把上游 SSE 原样透传给浏览器；上游出错时透传状态码与错误消息 |
 
-`DOUNAI_SYSTEM_PROMPT` 有值时，每次请求自动在消息前插入一条 system。豆奶站点响应带严格 CSP（`default-src 'self'` 等）与 `X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer`。
+每次 `/api/chat` 请求都会在消息前插入一条服务端 system：`DOUNAI_SYSTEM_PROMPT` 留空时使用后端内置豆奶人设，有值时覆盖该人设；客户端传入的 system/developer 消息会被丢弃。
+
+最新一条 `user` 消息命中敏感词时，服务端不请求上游、不创建网关会话、不消耗 token，直接返回 `200` + `text/event-stream`：响应头 `X-ChatShy-Blocked: 1`，body 只有 `data: [DONE]`。前端识别该响应头后移除本轮助手占位消息。词库与开关在操作台设置页维护（`sensitive_words` / `sensitive_filter_enabled`）。豆奶站点响应带严格 CSP（`default-src 'self'` 等）与 `X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer`。
 
 ## 页面路由
 

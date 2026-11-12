@@ -7,7 +7,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "chatshy")
 public record ChatShyProperties(
-        String dbPath,
         String adminPassword,
         String callerKey,
         long defaultTimeoutMs,

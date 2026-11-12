@@ -11,11 +11,14 @@ spring:
   jackson:
     default-property-inclusion: always
   datasource:
+    url: ${DB_URL:jdbc:postgresql://127.0.0.1:5432/chatshy}
+    username: ${DB_USER:chatshy}
+    password: ${DB_PASSWORD:}
     hikari:
-      maximum-pool-size: 1
-      minimum-idle: 1
-      idle-timeout: 0
-      max-lifetime: 0
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 5000
+      pool-name: chatshy-pg
 
 server:
   port: ${PORT:8088}
@@ -26,7 +29,6 @@ server:
     max-connections: 8192
 
 chatshy:
-  db-path: ${DB_PATH:./data/chatshy.db}
   admin-password: ${ADMIN_PASSWORD:}
   caller-key: ${CALLER_KEY:}
   default-timeout-ms: ${DEFAULT_TIMEOUT_MS:180000}
@@ -34,6 +36,8 @@ chatshy:
   sse-ping-ms: ${SSE_PING_MS:15000}
   hub-ping-ms: ${HUB_PING_MS:20000}
   typewriter-tick-ms: ${TYPEWRITER_TICK_MS:25}
+  new-thread-limit: ${NEW_THREAD_LIMIT:5}
+  new-thread-window-ms: ${NEW_THREAD_WINDOW_MS:60000}
   dounai:
     enabled: ${DOUNAI_ENABLED:true}
     port: ${DOUNAI_PORT:8099}

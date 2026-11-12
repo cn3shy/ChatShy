@@ -2,10 +2,12 @@
 import { computed, ref } from 'vue';
 import ChatView from './components/ChatView.vue';
 import Login from './components/Login.vue';
+import RequestMonitor from './components/RequestMonitor.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import ThreadList from './components/ThreadList.vue';
 import { logout, pendingTotal, selectThread, setAutoForward, state } from './store';
 
+const mainView = ref<'chat' | 'requests'>('chat');
 const autoBusy = ref(false);
 const autoMsg = ref('');
 const hasProviders = computed(() => state.providers.length > 0);
@@ -44,6 +46,12 @@ async function changeProvider(providerId: string): Promise<void> {
 
 function onChangeProvider(e: Event): void {
   void changeProvider((e.target as HTMLSelectElement).value);
+}
+
+/** 从会话列表或请求监控打开某个会话，并切回聊天视图。 */
+function openThread(id: string): void {
+  mainView.value = 'chat';
+  void selectThread(id);
 }
 </script>
 
@@ -86,11 +94,24 @@ function onChangeProvider(e: Event): void {
       <p v-if="state.forwardError" class="auto-forward-msg err">{{ state.forwardError }}</p>
       <p v-if="!hasProviders" class="auto-forward-msg muted">先在 ⚙ 设置里添加 AI 厂商</p>
 
-      <ThreadList :threads="state.threads" :selected-id="state.selectedId" :now="state.now" @select="selectThread" />
+      <button
+        class="monitor-entry"
+        :class="{ active: mainView === 'requests' }"
+        @click="mainView = 'requests'"
+      >
+        📊 请求监控
+      </button>
+
+      <ThreadList :threads="state.threads" :selected-id="state.selectedId" :now="state.now" @select="openThread" />
     </aside>
 
     <main class="main">
-      <ChatView v-if="state.detail" :detail="state.detail" :now="state.now" />
+      <RequestMonitor
+        v-if="mainView === 'requests'"
+        @close="mainView = 'chat'"
+        @open-thread="openThread"
+      />
+      <ChatView v-else-if="state.detail" :detail="state.detail" :now="state.now" />
       <div v-else class="empty">
         <h2>等待调用方来信 📮</h2>
         <p>

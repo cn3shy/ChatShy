@@ -1,4 +1,12 @@
-import type { ProviderInfo, ProviderInput, SettingsInfo, ThreadDetail, ThreadSummary } from './types';
+import type {
+  ProviderInfo,
+  ProviderInput,
+  RequestDetail,
+  RequestPage,
+  SettingsInfo,
+  ThreadDetail,
+  ThreadSummary,
+} from './types';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -41,6 +49,12 @@ export const api = {
   /** 删除会话；该会话下挂起的请求会按超时收尾，调用方收到协议错误码 */
   deleteThread: (id: string) =>
     req<{ ok: boolean; failedJobs: number }>(`/admin/api/threads/${id}`, { method: 'DELETE' }),
+  /** 批量删除会话；单次最多 500 条 */
+  deleteThreads: (ids: string[]) =>
+    req<{ ok: boolean; deleted: number; failedJobs: number }>('/admin/api/threads', {
+      method: 'DELETE',
+      body: { ids },
+    }),
   /** 拉黑 / 解除拉黑会话；被拉黑会话在网关入口直接收到 403 */
   blacklistThread: (id: string, blacklisted: boolean) =>
     req<{ ok: boolean; blacklisted: boolean }>(`/admin/api/threads/${id}/blacklist`, {
@@ -58,6 +72,24 @@ export const api = {
       { method: 'POST', body: { providerId } },
     ),
 
+  /** 请求监控：分页 + 状态/协议/关键词过滤 */
+  requests: (params: {
+    limit: number;
+    offset: number;
+    status?: string;
+    protocol?: string;
+    q?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    qs.set('limit', String(params.limit));
+    qs.set('offset', String(params.offset));
+    if (params.status) qs.set('status', params.status);
+    if (params.protocol) qs.set('protocol', params.protocol);
+    if (params.q) qs.set('q', params.q);
+    return req<RequestPage>(`/admin/api/requests?${qs.toString()}`);
+  },
+  request: (id: string) => req<RequestDetail>(`/admin/api/requests/${id}`),
+
   settings: () => req<SettingsInfo>('/admin/api/settings'),
   patchSettings: (patch: {
     defaultTimeoutMs?: number;
@@ -66,6 +98,8 @@ export const api = {
     currentPassword?: string;
     autoForwardEnabled?: boolean;
     autoForwardProviderId?: string;
+    sensitiveWords?: string;
+    sensitiveFilterEnabled?: boolean;
   }) => req<SettingsInfo & { ok: boolean }>('/admin/api/settings', { method: 'PATCH', body: patch }),
   /** 重新生成全局调用方 Key；旧 Key 立即失效 */
   regenerateCallerKey: () => req<{ callerKey: string }>('/admin/api/caller-key', { method: 'POST', body: {} }),

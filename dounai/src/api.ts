@@ -4,18 +4,30 @@ export interface StreamHandlers {
   onDelta(content: string, reasoning: string): void;
 }
 
+export type StreamResult = 'ok' | 'blocked';
+
 /** 同源 /api/chat，服务端已固定上游与 Key；这里只负责解析 SSE。 */
 export async function streamChat(
   messages: PayloadMessage[],
   handlers: StreamHandlers,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<StreamResult> {
   const response = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages }),
     signal,
   });
+
+  // 服务端敏感词拦截：静默丢弃本轮回复
+  if (response.headers.get('X-ChatShy-Blocked') === '1') {
+    try {
+      await response.body?.cancel();
+    } catch {
+      /* 忽略取消流的异常 */
+    }
+    return 'blocked';
+  }
 
   if (!response.ok || response.body === null) {
     let message = `请求失败(${response.status})`;
@@ -69,6 +81,7 @@ export async function streamChat(
       }
     }
   }
+  return 'ok';
 }
 
 export async function fetchModel(): Promise<string> {

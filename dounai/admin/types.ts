@@ -88,4 +88,43 @@ export interface SettingsInfo {
   autoForwardEnabled: boolean;
   /** 自动转发选定的厂商 id；空串 = 未选择 */
   autoForwardProviderId: string;
+  /** 敏感词原文（每行一个）；空串 = 使用后端内置词库 */
+  sensitiveWords: string;
+  /** 敏感词过滤开关；仅作用于豆奶公开入口 */
+  sensitiveFilterEnabled: boolean;
+}
+
+/** 请求监控列表项（不含完整请求体，完整内容走详情接口） */
+export interface RequestRecord {
+  id: string;
+  threadId: string;
+  threadTitle: string;
+  protocol: Protocol;
+  mode: string;
+  status: string;
+  model: string;
+  createdAt: number;
+  repliedAt: number | null;
+  via: string;
+  providerName: string;
+  sourceIp: string;
+  sourceUa: string;
+  sourceClient: string;
+  requestPreview: string;
+  replyPreview: string;
+  forwardError: string | null;
+}
+
+/** 请求详情：包含完整请求 JSON 与回复内容 */
+export interface RequestDetail extends RequestRecord {
+  requestJson: string;
+  replyContent: string | null;
+  forwardErrorAt: number | null;
+}
+
+export interface RequestPage {
+  total: number;
+  limit: number;
+  offset: number;
+  requests: RequestRecord[];
 }

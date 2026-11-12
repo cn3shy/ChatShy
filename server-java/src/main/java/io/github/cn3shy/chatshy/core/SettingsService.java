@@ -14,6 +14,8 @@ public class SettingsService {
     public static final String CALLER_KEY = "caller_key";
     public static final String AUTO_FORWARD_ENABLED = "auto_forward_enabled";
     public static final String AUTO_FORWARD_PROVIDER_ID = "auto_forward_provider_id";
+    public static final String SENSITIVE_WORDS = "sensitive_words";
+    public static final String SENSITIVE_FILTER_ENABLED = "sensitive_filter_enabled";
 
     private final JdbcTemplate jdbc;
 
@@ -34,9 +36,9 @@ public class SettingsService {
 
     /** 首次启动播种默认值；已有值不覆盖。 */
     public void initSettings(long defaultTimeoutMs, String modelName) {
-        jdbc.update("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+        jdbc.update("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
                 DEFAULT_TIMEOUT_MS, String.valueOf(defaultTimeoutMs));
-        jdbc.update("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+        jdbc.update("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
                 MODEL_NAME, modelName);
     }
 
@@ -83,6 +85,24 @@ public class SettingsService {
 
     public String getCallerKey() {
         return getSetting(CALLER_KEY);
+    }
+
+    /** 敏感词过滤默认开启；只有显式设为 0 才关闭。 */
+    public boolean isSensitiveFilterEnabled() {
+        return !"0".equals(getSetting(SENSITIVE_FILTER_ENABLED));
+    }
+
+    public void setSensitiveFilterEnabled(boolean enabled) {
+        setSetting(SENSITIVE_FILTER_ENABLED, enabled ? "1" : "0");
+    }
+
+    /** 操作台配置的敏感词原文；null/空串表示使用内置默认词库。 */
+    public String getSensitiveWordsText() {
+        return getSetting(SENSITIVE_WORDS);
+    }
+
+    public void setSensitiveWordsText(String text) {
+        setSetting(SENSITIVE_WORDS, text == null ? "" : text);
     }
 
     public String regenerateCallerKey() {

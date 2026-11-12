@@ -57,7 +57,7 @@ public class ProviderStore {
     }
 
     public List<Provider> listProviders() {
-        return jdbc.query("SELECT * FROM providers ORDER BY created_at ASC, rowid ASC", MAPPER);
+        return jdbc.query("SELECT * FROM providers ORDER BY created_at ASC, seq ASC", MAPPER);
     }
 
     public Provider getProvider(String id) {

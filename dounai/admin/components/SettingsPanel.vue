@@ -12,6 +12,9 @@ const currentPassword = ref('');
 const newPassword = ref('');
 const basicMsg = ref('');
 const pwdMsg = ref('');
+const sensitiveWords = ref(state.settings?.sensitiveWords ?? '');
+const sensitiveEnabled = ref(state.settings?.sensitiveFilterEnabled ?? true);
+const sensitiveMsg = ref('');
 const keyMsg = ref('');
 const keyCopied = ref(false);
 const configMsg = ref('');
@@ -89,6 +92,17 @@ async function saveBasic(): Promise<void> {
   busy.value = false;
 }
 
+async function saveSensitive(): Promise<void> {
+  busy.value = true;
+  sensitiveMsg.value = '';
+  const res = await updateSettings({
+    sensitiveWords: sensitiveWords.value,
+    sensitiveFilterEnabled: sensitiveEnabled.value,
+  });
+  sensitiveMsg.value = res.ok ? '已保存 ✓' : (res.error ?? '保存失败');
+  busy.value = false;
+}
+
 async function savePassword(): Promise<void> {
   busy.value = true;
   pwdMsg.value = '';
@@ -143,6 +157,24 @@ async function savePassword(): Promise<void> {
           与浏览器授权）</label
         >
         <label class="check-row"><input v-model="notifySound" type="checkbox" @change="toggleSoundPref" /> 新请求提示音</label>
+
+        <h3>敏感词屏蔽</h3>
+        <label class="check-row">
+          <input v-model="sensitiveEnabled" type="checkbox" />
+          拦截豆奶公开入口的垃圾话（命中后不回复）
+        </label>
+        <div class="key-form">
+          <label class="sensitive-field">
+            敏感词（每行一个，留空使用内置词库）
+            <textarea v-model="sensitiveWords" rows="6" placeholder="每行一个词，# 开头为注释"></textarea>
+          </label>
+          <button class="primary-btn" :disabled="busy" @click="saveSensitive">保存</button>
+        </div>
+        <p v-if="sensitiveMsg" class="note">{{ sensitiveMsg }}</p>
+        <p class="note muted">
+          只作用于豆奶 <code>/api/chat</code>；通过 chatshy Key 接入的 OpenAI / Anthropic 协议不受影响。
+          命中后不请求上游、不创建会话、不消耗 token。
+        </p>
 
         <h3>服务默认值</h3>
         <div class="key-form">
