@@ -1324,19 +1324,49 @@ code {
   .msg {
     max-width: 92%;
   }
+
+  .workspace {
+    grid-template-rows: 48px 1fr;
+  }
+
+  .chat-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 36vh 1fr;
+  }
+
+  .launchpad-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .stat-row {
+    flex-wrap: wrap;
+  }
+
+  .chart-grid,
+  .table-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar-title {
+    display: none;
+  }
 }
 
 /* ---- 滚动条（浅色） ---- */
 
 .thread-list::-webkit-scrollbar,
 .messages::-webkit-scrollbar,
-.modal::-webkit-scrollbar {
+.modal::-webkit-scrollbar,
+.settings-body::-webkit-scrollbar,
+.page-main::-webkit-scrollbar {
   width: 8px;
 }
 
 .thread-list::-webkit-scrollbar-thumb,
 .messages::-webkit-scrollbar-thumb,
-.modal::-webkit-scrollbar-thumb {
+.modal::-webkit-scrollbar-thumb,
+.settings-body::-webkit-scrollbar-thumb,
+.page-main::-webkit-scrollbar-thumb {
   background: #d8dfeb;
   border-radius: 8px;
   border: 2px solid transparent;
@@ -1345,7 +1375,393 @@ code {
 
 .thread-list::-webkit-scrollbar-thumb:hover,
 .messages::-webkit-scrollbar-thumb:hover,
-.modal::-webkit-scrollbar-thumb:hover {
+.modal::-webkit-scrollbar-thumb:hover,
+.settings-body::-webkit-scrollbar-thumb:hover,
+.page-main::-webkit-scrollbar-thumb:hover {
   background: #c3cdde;
   background-clip: content-box;
+}
+
+/* ============================================================
+   工作台（Launchpad）布局 —— macOS 启动台风格
+   ============================================================ */
+
+.workspace {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+/* ---- 顶部条（常驻，launchpad 外的视图显示） ---- */
+
+.topbar {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.topbar-home {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  font-weight: 600;
+  font-size: 0.98rem;
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.topbar-home:hover {
+  background: var(--accent-soft);
+}
+
+.topbar-title {
+  font-size: 0.95rem;
+  color: var(--muted);
+  flex: 1;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-pill {
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.topbar-pill:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.topbar-pill.hot {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-bg);
+  font-weight: 600;
+}
+
+/* ---- Launchpad ---- */
+
+.launchpad {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(91, 141, 239, 0.18), transparent),
+    radial-gradient(900px 500px at 90% 110%, rgba(74, 125, 224, 0.14), transparent),
+    var(--bg);
+}
+
+.launchpad-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 48px;
+  padding: 60px 24px;
+}
+
+.launchpad-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.launchpad-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 28px;
+}
+
+.launch-tile {
+  width: 132px;
+  height: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 22px;
+  box-shadow: 0 8px 24px rgba(91, 141, 239, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.launch-tile:hover {
+  transform: translateY(-4px) scale(1.04);
+  box-shadow: 0 14px 32px rgba(91, 141, 239, 0.22);
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.launch-icon {
+  font-size: 2.4rem;
+  position: relative;
+  line-height: 1;
+}
+
+.launch-badge {
+  position: absolute;
+  top: -6px;
+  right: -10px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.launch-label {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.launch-desc {
+  font-size: 0.72rem;
+  color: var(--faint);
+}
+
+/* ---- 会话管理布局（侧栏 + 主区） ---- */
+
+.chat-layout {
+  display: grid;
+  grid-template-columns: 330px 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---- 全屏功能页容器 ---- */
+
+.page-main {
+  padding: 18px 22px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.page-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.page-title h2 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+/* ---- 用量页 ---- */
+
+.usage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.range-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.range-input {
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.range-sep {
+  font-size: 0.85rem;
+}
+
+.stat-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.stat-card {
+  flex: 1 1 140px;
+  min-width: 120px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+
+.stat-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent-2);
+  line-height: 1.2;
+}
+
+.stat-label {
+  margin-top: 4px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.table-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 18px;
+}
+
+.chart-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+
+.chart-card h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+
+.chart-box {
+  height: 240px;
+  position: relative;
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.usage-table th,
+.usage-table td {
+  text-align: left;
+  padding: 7px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.usage-table th {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.usage-table .t-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-footnote {
+  font-size: 0.8rem;
+}
+
+/* ---- 全屏设置页 ---- */
+
+.settings-page {
+  padding: 18px 22px;
+  overflow: auto;
+  height: 100%;
+}
+
+.settings-body {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.settings-body h3 {
+  margin: 28px 0 12px;
+  font-size: 1.05rem;
+}
+
+.settings-body h3:first-child {
+  margin-top: 0;
+}
+
+/* ---- 模型单价表 ---- */
+
+.price-table .note.muted {
+  font-size: 0.82rem;
+}
+
+.cell-input {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.cell-input.num {
+  width: 90px;
+}
+
+.cell-select {
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.row-actions {
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.price-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
 }

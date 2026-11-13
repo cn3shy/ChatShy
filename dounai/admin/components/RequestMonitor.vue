@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { fetchRequestDetail, fetchRequests } from '../store';
 import type { RequestDetail, RequestRecord } from '../types';
 
-defineEmits<{ close: []; openThread: [id: string] }>();
+defineEmits<{ openThread: [id: string] }>();
 
 const LIMIT = 50;
 const items = ref<RequestRecord[]>([]);
@@ -12,6 +12,8 @@ const offset = ref(0);
 const status = ref('');
 const protocol = ref('');
 const q = ref('');
+const fromDate = ref('');
+const toDate = ref('');
 const loading = ref(false);
 const error = ref('');
 const detailError = ref('');
@@ -21,6 +23,19 @@ const detailLoading = ref(false);
 
 const page = computed(() => Math.floor(offset.value / LIMIT) + 1);
 const pages = computed(() => Math.max(1, Math.ceil(total.value / LIMIT)));
+
+/** datetime-local 字符串 → epoch 毫秒（结束时间取当天 23:59:59.999） */
+function fromLocal(value: string): number | undefined {
+  if (!value) return undefined;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : undefined;
+}
+
+function toLocalEnd(value: string): number | undefined {
+  if (!value) return undefined;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms + 59_999 : undefined;
+}
 
 const STATUS_LABELS: Record<string, string> = {
   pending: '待回复',
@@ -46,6 +61,8 @@ async function load(): Promise<void> {
       status: status.value,
       protocol: protocol.value,
       q: q.value.trim(),
+      from: fromLocal(fromDate.value),
+      to: toLocalEnd(toDate.value),
     });
     if (seq !== loadSeq) return;
     if (res.requests.length === 0 && offset.value > 0 && res.total > 0) {
@@ -71,6 +88,8 @@ function resetFilters(): void {
   status.value = '';
   protocol.value = '';
   q.value = '';
+  fromDate.value = '';
+  toDate.value = '';
   applyFilters();
 }
 
@@ -151,7 +170,6 @@ onUnmounted(() => {
         <button class="ghost-btn small" :disabled="loading" @click="load">
           {{ loading ? '刷新中…' : '刷新' }}
         </button>
-        <button class="ghost-btn small" @click="$emit('close')">返回会话</button>
       </div>
     </header>
 
@@ -170,6 +188,21 @@ onUnmounted(() => {
         <option value="openai">OpenAI</option>
         <option value="anthropic">Anthropic</option>
       </select>
+      <input
+        v-model="fromDate"
+        class="range-input"
+        type="datetime-local"
+        title="开始时间"
+        @change="applyFilters"
+      />
+      <span class="muted range-sep">至</span>
+      <input
+        v-model="toDate"
+        class="range-input"
+        type="datetime-local"
+        title="结束时间"
+        @change="applyFilters"
+      />
       <input
         v-model="q"
         class="monitor-search"
@@ -217,6 +250,11 @@ onUnmounted(() => {
               </button>
               <span class="muted">请求 ID：{{ detail.id }}</span>
               <span v-if="detail.threadTitle" class="muted">会话：{{ detail.threadTitle }}</span>
+              <span v-if="detail.tokenSource" class="muted">
+                Token：输入 {{ detail.inputTokens ?? '—' }} / 输出 {{ detail.outputTokens ?? '—' }}
+                <template v-if="detail.cacheReadTokens">（缓存命中 {{ detail.cacheReadTokens }}）</template>
+                · {{ detail.tokenSource === 'upstream' ? '上游回报' : '估算' }}
+              </span>
             </div>
             <h4>请求参数</h4>
             <pre class="req-json">{{ formatJson(detail.requestJson) }}</pre>

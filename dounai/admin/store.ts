@@ -20,7 +20,6 @@ export const state = reactive({
   detail: null as ThreadDetail | null,
   settings: null as SettingsInfo | null,
   providers: [] as ProviderInfo[],
-  showSettings: false,
   /** 自动转发失败的最近提示（侧边栏短暂展示） */
   forwardError: '',
   /** 每秒推进的时钟，用于倒计时 */

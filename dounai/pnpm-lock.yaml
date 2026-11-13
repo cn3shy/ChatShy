@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      chart.js:
+        specifier: ^4.6.1
+        version: 4.6.1
       highlight.js:
         specifier: ^11.12.0
         version: 11.12.0
@@ -17,6 +20,9 @@ importers:
       vue:
         specifier: ^3.5.44
         version: 3.5.45(typescript@7.0.2)
+      vue-chartjs:
+        specifier: ^5.3.4
+        version: 5.3.4(chart.js@4.6.1)(vue@3.5.45(typescript@7.0.2))
     devDependencies:
       '@vitejs/plugin-vue':
         specifier: ^6.0.10
@@ -49,6 +55,9 @@ packages:
 
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
+
+  '@kurkle/color@0.3.0':
+    resolution: {integrity: sha512-Luw5mZn6nHxbI111tiS/Ub21FcDe8eel2c5nnlRllWEH3k3QprlarJ4XJ+yHibqsJNXN8DrTrovciwbJ1euZ0w==}
 
   '@oxc-project/types@0.156.0':
     resolution: {integrity: sha512-1Duyg48TdJNdyhEB8Xn1L36bT9Pv6GUtlKjHxOys8xkaF/rQq3XJE+bAurSK/AgIz5mGFsb77cn9Pb20+WCScw==}
@@ -309,6 +318,10 @@ packages:
   argparse@3.0.4:
     resolution: {integrity: sha512-fwWK3Zq22l4XJJjx5mcBHGikIk+hJqO+32dPm0Jur7+rtG5x1scOjSfdT9ZKeWHPpsya/l0HHK4tDImBkTrtvA==}
 
+  chart.js@4.6.1:
+    resolution: {integrity: sha512-hJyniucsFmq//EvXYvJ6c6mahPoI3kaxdjVH8awTaJ/fDNWeSqqqArixMJWkWNN6fcYvPU3HneSANFNYtRi61g==}
+    engines: {pnpm: '>=8'}
+
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
@@ -516,6 +529,12 @@ packages:
       yaml:
         optional: true
 
+  vue-chartjs@5.3.4:
+    resolution: {integrity: sha512-x3Fqob8RQvrTdssfi9ecsCzEkFOd8JPmNwSkSQzdfKj/uBsRJs/Y88cZcZIEcPsTVfMGwMo4MOoihoDG2DoE/g==}
+    peerDependencies:
+      chart.js: ^4.1.1
+      vue: ^3.0.0-0 || ^2.7.0
+
   vue@3.5.45:
     resolution: {integrity: sha512-3cvsib8m9c0vB24+MDKsgcW4+Da4xaBl9Z/5Tbm2pmSIsRPxcil4cdXjXlVsmJ2g64XJo5h+IRd7rsdGT9pZaw==}
     peerDependencies:
@@ -540,6 +559,8 @@ snapshots:
       '@babel/helper-validator-identifier': 7.29.7
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
+
+  '@kurkle/color@0.3.0': {}
 
   '@oxc-project/types@0.156.0': {}
 
@@ -712,6 +733,10 @@ snapshots:
 
   argparse@3.0.4: {}
 
+  chart.js@4.6.1:
+    dependencies:
+      '@kurkle/color': 0.3.0
+
   csstype@3.2.3: {}
 
   detect-libc@2.1.2: {}
@@ -875,6 +900,11 @@ snapshots:
       tinyglobby: 0.2.17
     optionalDependencies:
       fsevents: 2.3.3
+
+  vue-chartjs@5.3.4(chart.js@4.6.1)(vue@3.5.45(typescript@7.0.2)):
+    dependencies:
+      chart.js: 4.6.1
+      vue: 3.5.45(typescript@7.0.2)
 
   vue@3.5.45(typescript@7.0.2):
     dependencies:

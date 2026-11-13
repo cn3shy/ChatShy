@@ -1,4 +1,6 @@
 import type {
+  ModelPrice,
+  ModelPriceInput,
   ProviderInfo,
   ProviderInput,
   RequestDetail,
@@ -6,6 +8,7 @@ import type {
   SettingsInfo,
   ThreadDetail,
   ThreadSummary,
+  UsageResponse,
 } from './types';
 
 export class ApiError extends Error {
@@ -72,13 +75,15 @@ export const api = {
       { method: 'POST', body: { providerId } },
     ),
 
-  /** 请求监控：分页 + 状态/协议/关键词过滤 */
+  /** 请求监控：分页 + 状态/协议/关键词/时间范围过滤 */
   requests: (params: {
     limit: number;
     offset: number;
     status?: string;
     protocol?: string;
     q?: string;
+    from?: number;
+    to?: number;
   }) => {
     const qs = new URLSearchParams();
     qs.set('limit', String(params.limit));
@@ -86,9 +91,29 @@ export const api = {
     if (params.status) qs.set('status', params.status);
     if (params.protocol) qs.set('protocol', params.protocol);
     if (params.q) qs.set('q', params.q);
+    if (params.from) qs.set('from', String(params.from));
+    if (params.to) qs.set('to', String(params.to));
     return req<RequestPage>(`/admin/api/requests?${qs.toString()}`);
   },
   request: (id: string) => req<RequestDetail>(`/admin/api/requests/${id}`),
+
+  /** 用量统计：汇总 + 按天时序 + 按模型/厂商/来源分组 */
+  usage: (params: { from?: number; to?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.from) qs.set('from', String(params.from));
+    if (params.to) qs.set('to', String(params.to));
+    const query = qs.toString();
+    return req<UsageResponse>(`/admin/api/usage${query ? `?${query}` : ''}`);
+  },
+
+  /** 模型单价表（每百万 token） */
+  modelPrices: () => req<{ prices: ModelPrice[] }>('/admin/api/model-prices'),
+  createModelPrice: (input: ModelPriceInput) =>
+    req<{ price: ModelPrice }>('/admin/api/model-prices', { method: 'POST', body: input }),
+  updateModelPrice: (id: string, patch: Partial<ModelPriceInput>) =>
+    req<{ price: ModelPrice }>(`/admin/api/model-prices/${id}`, { method: 'PATCH', body: patch }),
+  deleteModelPrice: (id: string) =>
+    req<{ ok: boolean }>(`/admin/api/model-prices/${id}`, { method: 'DELETE' }),
 
   settings: () => req<SettingsInfo>('/admin/api/settings'),
   patchSettings: (patch: {

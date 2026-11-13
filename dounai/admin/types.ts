@@ -116,10 +116,12 @@ export interface RequestRecord {
 }
 
 /** 请求详情：包含完整请求 JSON 与回复内容 */
-export interface RequestDetail extends RequestRecord {
+export interface RequestDetail extends RequestRecord, TokenUsage {
   requestJson: string;
   replyContent: string | null;
   forwardErrorAt: number | null;
+  /** 计费模型（转发时 = 厂商配置的模型；人工回复 = 线程模型） */
+  billingModel: string;
 }
 
 export interface RequestPage {
@@ -127,4 +129,71 @@ export interface RequestPage {
   limit: number;
   offset: number;
   requests: RequestRecord[];
+}
+
+/** 请求详情里的 token 用量（v3 之前的旧记录为 null） */
+export interface TokenUsage {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  tokenSource: 'upstream' | 'estimated' | null;
+}
+
+/** 模型单价（每百万 token） */
+export interface ModelPrice {
+  id: string;
+  model: string;
+  inputPerM: number;
+  outputPerM: number;
+  cacheReadPerM: number;
+  currency: 'CNY' | 'USD';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ModelPriceInput {
+  model: string;
+  inputPerM: number;
+  outputPerM: number;
+  cacheReadPerM: number;
+  currency: 'CNY' | 'USD';
+}
+
+/** 用量分组行（模型/厂商/来源共用形状） */
+export interface UsageGroup {
+  name: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  /** 配了单价才有以下字段 */
+  inputCost?: number;
+  outputCost?: number;
+  cacheReadCost?: number;
+  currency?: 'CNY' | 'USD';
+}
+
+export interface UsageDaily {
+  day: string;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+}
+
+export interface UsageResponse {
+  totals: {
+    requests: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheHitRate: number;
+    costs: Record<string, number | string> & { unpricedRequests: number };
+  };
+  daily: UsageDaily[];
+  byModel: UsageGroup[];
+  byProvider: UsageGroup[];
+  bySource: UsageGroup[];
+  from: number;
+  to: number;
 }

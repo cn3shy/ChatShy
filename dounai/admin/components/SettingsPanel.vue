@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
+import { api } from '../api';
 import { desktopEnabled, requestDesktopPermission, setDesktop, setSound, soundEnabled } from '../notify';
 import { regenerateKey, state, updateSettings } from '../store';
+import type { ModelPrice } from '../types';
+import ModelPriceTable from './ModelPriceTable.vue';
 import ProviderSettings from './ProviderSettings.vue';
-
-defineEmits<{ close: [] }>();
-
 const timeoutSec = ref(state.settings === null ? '180' : String(state.settings.defaultTimeoutMs / 1000));
 const modelName = ref(state.settings?.modelName ?? 'chatshy');
 const currentPassword = ref('');
@@ -117,17 +117,31 @@ async function savePassword(): Promise<void> {
   }
   busy.value = false;
 }
+
+const prices = ref<ModelPrice[]>([]);
+
+async function refreshPrices(): Promise<void> {
+  try {
+    const res = await api.modelPrices();
+    prices.value = res.prices;
+  } catch {
+    /* 单价加载失败不阻塞设置页 */
+  }
+}
+
+onMounted(() => void refreshPrices());
 </script>
 
 <template>
-  <div class="modal-mask" @click.self="$emit('close')">
-    <div class="modal wide">
-      <header class="modal-head">
+  <div class="settings-page">
+    <header class="page-head">
+      <div class="page-title">
         <h2>设置</h2>
-        <button class="icon-btn" @click="$emit('close')">✕</button>
-      </header>
+        <span class="muted">Key · 厂商 · 单价 · 提醒 · 服务默认值</span>
+      </div>
+    </header>
 
-      <section class="modal-body">
+    <section class="settings-body">
         <h3>调用方 Key</h3>
         <div class="key-row">
           <code class="key-value">{{ state.settings?.callerKey || '（尚未生成）' }}</code>
@@ -150,6 +164,9 @@ async function savePassword(): Promise<void> {
 
         <h3>AI 厂商转发</h3>
         <ProviderSettings />
+
+        <h3>模型单价</h3>
+        <ModelPriceTable />
 
         <h3>提醒</h3>
         <label class="check-row"
@@ -193,6 +210,5 @@ async function savePassword(): Promise<void> {
         </div>
         <p v-if="pwdMsg" class="note">{{ pwdMsg }}</p>
       </section>
-    </div>
   </div>
 </template>
