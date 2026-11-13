@@ -1,0 +1,35 @@
+Containerfile.nginx
+  s_e28a69cbbbc56e::t_a1027756331681 1-18
+.dockerignore
+  s_e28a69cbbbc56e::t_2f5e0863b86684 1-23
+Containerfile
+  s_e28a69cbbbc56e::t_75bb7d32080fb8 1-2,4-5,24,26,30-34,39-40,43,45
+  s_e28a69cbbbc56e::t_b7b091c56bfd87 3,6-23,25,27-29,35-38,41-42,44
+podman-compose.yml
+  s_e28a69cbbbc56e::t_ac363f40cb2ffa 41-42
+  s_e28a69cbbbc56e::t_18d146dcfb34aa 2-5,7-20,22,24-36,40,43,45-56,58-62
+  s_e28a69cbbbc56e::t_404e96485295e4 1,6,21,23,37-39,44,57,63-80
+README.md
+  s_e28a69cbbbc56e::t_7946d5d33fb8a0 132
+  s_e28a69cbbbc56e::t_85d8ebb80b8d80 155,157,162-164,167,170-171,173-175,177-180,186
+  s_e28a69cbbbc56e::t_78a591d8e30b83 154,156,158-161,165-166,168-169,172,176,181-185
+container/nginx.conf
+  s_e28a69cbbbc56e::t_f8bf5872c0ddd3 1-9,23-24,31-42,44-46,48-54,56-61
+  s_e28a69cbbbc56e::t_d96f26ce5f02ee 10-22,25-30,43,47,55,62-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4fe34e725fa907025aec95b2336b10bb1df8eb65",
+  "prompts": {},
+  "sessions": {
+    "s_e28a69cbbbc56e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11175e40-9f23-4f1b-aa94-f2c761eeb3f4",
+        "model": "glm-5.2"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
