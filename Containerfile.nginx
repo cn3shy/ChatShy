@@ -1,0 +1,18 @@
+# ChatShy nginx 镜像：托管前端 dist（豆奶 + 控制台）并反代后端 API
+# 与后端 chatshy 镜像配合，见 podman-compose.yml。
+
+# ---------- 阶段 1：前端 ----------
+FROM docker.io/library/node:22-bookworm AS frontend-builder
+RUN npm install -g pnpm@12
+WORKDIR /build
+COPY dounai/package.json dounai/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY dounai/ ./
+RUN pnpm build
+# 产物 /build/dist
+
+# ---------- 阶段 2：nginx 运行时 ----------
+FROM docker.io/library/nginx:1.27-bookworm AS runtime
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY container/nginx.conf /etc/nginx/conf.d/chatshy.conf
+COPY --from=frontend-builder /build/dist /app/dounai/dist

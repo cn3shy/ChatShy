@@ -129,7 +129,7 @@ export ANTHROPIC_API_KEY="sk-chatshy-..."      # 或 ANTHROPIC_AUTH_TOKEN
 
 ## 部署（本机 systemd）
 
-先准备 PostgreSQL（14+；仓库根目录提供可选的 `docker-compose.yml`）：
+先准备 PostgreSQL（14+）：
 
 ```sql
 CREATE USER chatshy WITH PASSWORD '换成强密码';
@@ -150,6 +150,39 @@ DB_PASSWORD=换成强密码
 - 启停：`systemctl restart chatshy`；日志：`journalctl -u chatshy -f`
 - `.env` 由 Spring Boot 启动时自动加载，完整变量见 `.env.example`
 - nginx 反代需保持 `proxy_buffering off`（SSE 流式），并转发真实 IP（`X-Forwarded-For` / `X-Real-IP`）
+
+## 部署（Podman + nginx，单域名 dounai.chat）
+
+Podman Compose 起三个容器，对外只开 80 端口、绑域名 `dounai.chat`：
+
+- `nginx`（自建镜像 `chatshy-nginx`）：托管前端 dist（豆奶 `/`、控制台 `/admin`）+ 反代后端 API
+- `chatshy`（自建镜像，JRE 21）：Spring Boot 单端口 8088，只跑 API（`/v1` 网关、`/admin/api` 操作台、`/api/chat` 豆奶同源接口、`/healthz`）
+- `postgres`：PostgreSQL 16
+
+文件布局：
+
+```
+Containerfile              后端镜像：多阶段构建（maven 编译 jar → JRE 21 运行层）
+Containerfile.nginx        前端镜像：node 构建前端 → nginx 内嵌 dist
+.dockerignore              构建上下文排除依赖与本地产物
+container/nginx.conf       80 端口：前端 serve + API 反代，proxy_buffering off（SSE）
+podman-compose.yml         nginx + chatshy + postgres，数据落 ./data
+```
+
+启动（需先把 `dounai.chat` 解析到本机）：
+
+```bash
+cp .env.example .env        # 至少改 DB_PASSWORD 为强密码
+podman compose build        # 首次或代码变更后构建两个镜像
+podman compose up -d        # 启动
+podman logs -f chatshy      # 首次启动会打印随机生成的管理员密码 / 调用方 Key
+```
+
+- 对外只有 80；域名 `dounai.chat` 下：`/` 是豆奶聊天页，`/admin` 是操作台，`/v1` 是 OpenAI/Anthropic 网关
+- 后端只听容器内部 `127.0.0.1:8088`，不对宿主机发布，全部经 nginx
+- 豆奶独立监听已关闭（`DOUNAI_ENABLED=false`）；`/api/chat` 同源反代到后端，访客不感知端口
+- 数据不用 volume：PostgreSQL 数据落在仓库同目录 `./data/postgres`；升级镜像后 `podman compose up -d` 重建容器，数据不丢
+- 想加 TLS：在 `container/nginx.conf` 另起 443 server，证书用 volume 挂进 nginx 容器
 
 ### 从旧 SQLite 迁移数据
 

@@ -1,0 +1,23 @@
+# 构建上下文只送源码与构建脚本，排除依赖与本地产物（多阶段构建会重新编译）
+.git/
+**/node_modules/
+**/.pnpm-store/
+**/target/
+**/dist/
+**/build/
+**/out/
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+data/
+docs/
+backups/
+*.log
+logs/
+*.db
+*.sqlite
+*.sqlite3
+.DS_Store
+Thumbs.db

@@ -1,0 +1,80 @@
+# ChatShy Podman Compose：nginx（前端+反代，80 对外）+ chatshy 后端（8088）+ PostgreSQL
+#
+# 一键启动：podman compose up -d
+# 停止：    podman compose down
+# 重建镜像：podman compose build
+# 日志：    podman logs -f chatshy-nginx
+#
+# 部署前在当前目录建 .env（可从 .env.example 复制），至少设：
+#   DB_PASSWORD=换成强密码
+# ADMIN_PASSWORD / CALLER_KEY 留空则首次启动随机生成并打印到日志，之后改设置请走操作台。
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16
+    container_name: chatshy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: chatshy
+      POSTGRES_USER: chatshy
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+    # 不用 volume，数据落在同目录 ./data/postgres
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatshy -d chatshy"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  chatshy:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: chatshy:latest
+    container_name: chatshy
+    restart: unless-stopped
+    # 不对宿主机发布端口，仅在 Podman 网络内供 nginx 反代
+    expose:
+      - "8088"
+    environment:
+      # 后端单端口 8088；监听 0.0.0.0 让同 Podman 网络的 nginx 能连进来（不对宿主机发布，靠 expose + 网络隔离）
+      HOST: 0.0.0.0
+      PORT: 8088
+      DOUNAI_ENABLED: "false"
+      DB_URL: jdbc:postgresql://postgres:5432/chatshy
+      DB_USER: chatshy
+      DB_PASSWORD: ${DB_PASSWORD:-change-me}
+      DB_POOL_SIZE: "10"
+      DB_POOL_MIN_IDLE: "2"
+      DEFAULT_TIMEOUT_MS: "180000"
+      MODEL_NAME: chatshy
+      JAVA_OPTS: ""
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8088/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  nginx:
+    build:
+      context: .
+      dockerfile: Containerfile.nginx
+    image: chatshy-nginx:latest
+    container_name: chatshy-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      chatshy:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
