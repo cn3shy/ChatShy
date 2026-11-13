@@ -1,0 +1,78 @@
+server-java/src/main/resources/application.yml
+  s_d8851bb3f8cbb5::t_81585627941a74 23-26
+server-java/src/test/java/io/github/cn3shy/chatshy/db/MigrationsTest.java
+  s_d8851bb3f8cbb5::t_8c108c0b034158 23-24,30-32
+server-java/src/main/java/io/github/cn3shy/chatshy/core/JobQueue.java
+  s_d8851bb3f8cbb5::t_da40329dab2356 140-143,153-165
+  s_d8851bb3f8cbb5::t_ee64c03956c7fd 77
+  s_d8851bb3f8cbb5::t_e2672f8ac48293 73-76,80,166-167
+server-java/pom.xml
+  s_d8851bb3f8cbb5::t_ec978f5370ba59 24,36-45
+server-java/src/main/java/io/github/cn3shy/chatshy/ChatShyApplication.java
+  s_d8851bb3f8cbb5::t_74b387979f7afb 3,12
+server-java/src/main/java/io/github/cn3shy/chatshy/mapper/ModelPriceMapper.java
+  s_d8851bb3f8cbb5::t_a29b0dc2863511 1-18
+server-java/src/main/java/io/github/cn3shy/chatshy/core/ProviderClient.java
+  s_d8851bb3f8cbb5::t_78b2c112f237ec 363-384
+  s_d8851bb3f8cbb5::t_621e90a2a60e11 311-314
+  s_d8851bb3f8cbb5::t_080b9f1a54dd54 265-267
+  s_d8851bb3f8cbb5::t_cae52b12c2ba5b 181-182
+  s_d8851bb3f8cbb5::t_441167537aac1c 237,241
+  s_d8851bb3f8cbb5::t_154d50a9155324 171-178
+  s_d8851bb3f8cbb5::t_f0fdffcef3e02d 119-135
+  s_d8851bb3f8cbb5::t_c8e58ed05aa70e 348-351
+  s_d8851bb3f8cbb5::t_bd6578bd3e9c8e 291
+server-java/src/main/java/io/github/cn3shy/chatshy/mapper/ModelPriceEntity.java
+  s_d8851bb3f8cbb5::t_debba740d7fa58 1-92
+server-java/src/test/java/io/github/cn3shy/chatshy/core/ProviderClientUsageTest.java
+  s_d8851bb3f8cbb5::t_8d64a0711e159c 14,28,38,50,59
+  s_d8851bb3f8cbb5::t_4a77a21246ec5b 1-13,15-27,29-37,39-49,51-58,60-67
+server-java/src/main/java/io/github/cn3shy/chatshy/db/Migrations.java
+  s_d8851bb3f8cbb5::t_f1f3ab6e8fd137 20
+  s_d8851bb3f8cbb5::t_9ca265a7e8aa62 154-175
+server-java/src/main/java/io/github/cn3shy/chatshy/core/PendingJob.java
+  s_d8851bb3f8cbb5::t_12abd021f5f4f4 19-27
+server-java/src/test/java/io/github/cn3shy/chatshy/ChatShyIntegrationTest.java
+  s_d8851bb3f8cbb5::t_b4fe45e45bdc0e 685-709,711-727,731-739,750-835,837,845-904
+  s_d8851bb3f8cbb5::t_dd32c0fa6f45df 710
+  s_d8851bb3f8cbb5::t_4a74e96b75c8bd 843-844
+  s_d8851bb3f8cbb5::t_08fd76e74b037e 728-730,740-749
+  s_d8851bb3f8cbb5::t_5b048f708f7b9e 836,838-841
+  s_d8851bb3f8cbb5::t_7bc63a8ea6c584 842
+server-java/src/main/java/io/github/cn3shy/chatshy/core/Forwarder.java
+  s_d8851bb3f8cbb5::t_b259dfb5eb3a2f 222-232
+  s_d8851bb3f8cbb5::t_23926691a79067 140,142-145,147-150,161
+server-java/src/main/java/io/github/cn3shy/chatshy/web/AdminController.java
+  s_d8851bb3f8cbb5::t_eddd022e6abc7d 456-457,475,487-490
+  s_d8851bb3f8cbb5::t_90a35ac2cde4a3 88,92,102
+  s_d8851bb3f8cbb5::t_a72317181c2b2d 396,398,408
+  s_d8851bb3f8cbb5::t_4b1569d9507926 364-365,387-393
+  s_d8851bb3f8cbb5::t_8306e99c12287a 394,524
+  s_d8851bb3f8cbb5::t_e4f2237899b041 897-906
+  s_d8851bb3f8cbb5::t_9f160356b9b59d 5
+  s_d8851bb3f8cbb5::t_97be3d2b6b331b 582-616
+  s_d8851bb3f8cbb5::t_f47242ee1e1c26 690
+  s_d8851bb3f8cbb5::t_90aa9a7fe7a304 49-51
+  s_d8851bb3f8cbb5::t_df5cf23ce027ff 39
+  s_d8851bb3f8cbb5::t_f7015feb5d9172 841-896,907-1035
+server-java/src/main/java/io/github/cn3shy/chatshy/core/ModelPriceStore.java
+  s_d8851bb3f8cbb5::t_44ff3c6eab89d8 73
+  s_d8851bb3f8cbb5::t_3ef423e039d367 5,8-14,17,47,49-50,54-57,61-62,67-68,79-88,92,94-95,97,99,101,104-112,117,127-132,152,160-161
+  s_d8851bb3f8cbb5::t_542275b6ef4714 1-4,6-7,15-16,18-46,48,51-53,58-60,63-66,69-72,74-78,89-91,93,96,98,100,102-103,113-116,118-126,133-151,153-159,162-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d57be161963066f25b4f3b10d4fb8f36221b3700",
+  "prompts": {},
+  "sessions": {
+    "s_d8851bb3f8cbb5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "76962712-1c70-455d-9881-1a1c322dfb0b",
+        "model": "glm-5.2"
+      },
+      "human_author": "Shy <cn3shy@qq.com>"
+    }
+  }
+}
