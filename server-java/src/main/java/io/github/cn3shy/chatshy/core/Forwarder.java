@@ -137,11 +137,17 @@ public class Forwarder {
             }
 
             String content;
+            ProviderClient.TokenUsage usage;
             if ("stream".equals(job.mode())) {
-                content = client.callProviderStream(provider, prompt, ProviderClient.PROVIDER_TIMEOUT_MS,
-                        abort, job::pushDelta);
+                ProviderClient.ProviderResult result = client.callProviderStream(provider, prompt,
+                        ProviderClient.PROVIDER_TIMEOUT_MS, abort, job::pushDelta);
+                content = result.content();
+                usage = result.usage();
             } else {
-                content = client.callProvider(provider, prompt, ProviderClient.PROVIDER_TIMEOUT_MS, abort);
+                ProviderClient.ProviderResult result = client.callProvider(provider, prompt,
+                        ProviderClient.PROVIDER_TIMEOUT_MS, abort);
+                content = result.content();
+                usage = result.usage();
             }
 
             if (jobEnded.get() || !"pending".equals(job.status())) {
@@ -152,7 +158,7 @@ public class Forwarder {
             } catch (RuntimeException ignored) {
                 // 会话可能已被删除
             }
-            if (queue.reply(job.id(), content, provider.name())) {
+            if (queue.reply(job.id(), content, provider.name(), tokenRecord(provider, usage))) {
                 clearForwardError(job.id(), provider);
                 return ForwardResult.replied(provider.name(), content);
             }
@@ -211,6 +217,17 @@ public class Forwarder {
                 ? ar.prompt()
                 : ((OpenAiProtocol.ParsedRequest) parsed.value()).prompt();
         return new PromptResult(true, prompt, null);
+    }
+
+    /** 把上游 usage 翻成 jobs 表的 token 列；上游没报时返回 null（不写 token 列）。 */
+    private static PendingJob.TokenRecord tokenRecord(Provider provider, ProviderClient.TokenUsage usage) {
+        if (usage == null || !usage.known()) return null;
+        return new PendingJob.TokenRecord(
+                provider.model(),
+                Math.max(0, usage.inputTokens()),
+                Math.max(0, usage.outputTokens()),
+                Math.max(0, usage.cacheReadTokens()),
+                "upstream");
     }
 
     private void recordForwardError(PendingJob job, Provider provider, String message) {

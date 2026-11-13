@@ -20,6 +20,10 @@ spring:
       connection-timeout: 5000
       pool-name: chatshy-pg
 
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
 server:
   port: ${PORT:8088}
   address: ${HOST:0.0.0.0}

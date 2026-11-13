@@ -20,13 +20,16 @@ class MigrationsTest {
             migrations.migrate();
 
             assertThat(tableNames(db.jdbc())).contains(
-                    "threads", "messages", "jobs", "settings", "schema_version", "providers");
+                    "threads", "messages", "jobs", "settings", "schema_version", "providers",
+                    "model_prices");
             assertThat(columnNames(db.jdbc(), "threads")).contains(
                     "seq", "source_ip", "source_ua", "source_client", "source_fingerprint", "blacklisted");
             assertThat(columnTypes(db.jdbc(), "threads")).containsEntry("created_at", "bigint");
             assertThat(columnTypes(db.jdbc(), "messages")).containsEntry("created_at", "bigint");
             assertThat(columnTypes(db.jdbc(), "jobs")).containsEntry("deadline_at", "bigint");
-            assertThat(columnTypes(db.jdbc(), "providers")).containsEntry("updated_at", "bigint");
+            assertThat(columnTypes(db.jdbc(), "jobs")).containsEntry("input_tokens", "bigint");
+            assertThat(columnTypes(db.jdbc(), "jobs")).containsEntry("token_source", "text");
+            assertThat(columnTypes(db.jdbc(), "model_prices")).containsEntry("input_per_m", "numeric");
             assertThat(db.jdbc().queryForObject("SELECT version FROM schema_version", Integer.class))
                     .isEqualTo(Migrations.SCHEMA_VERSION);
         }

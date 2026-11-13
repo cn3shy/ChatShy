@@ -116,7 +116,23 @@ public class ProviderClient {
         return t;
     });
 
-    public String callProvider(Provider provider, Prompt prompt, long timeoutMs, AbortHandle abort) {
+    /** 上游回报的 token 用量；-1 表示该字段未知（上游没报）。 */
+    public record TokenUsage(long inputTokens, long outputTokens, long cacheReadTokens) {
+        public static final TokenUsage UNKNOWN = new TokenUsage(-1, -1, -1);
+
+        public boolean known() {
+            return inputTokens >= 0 || outputTokens >= 0 || cacheReadTokens >= 0;
+        }
+    }
+
+    /** 转发结果：内容 + 上游 usage（可能未知）。 */
+    public record ProviderResult(String content, TokenUsage usage) {
+        public static ProviderResult of(String content) {
+            return new ProviderResult(content, TokenUsage.UNKNOWN);
+        }
+    }
+
+    public ProviderResult callProvider(Provider provider, Prompt prompt, long timeoutMs, AbortHandle abort) {
         long budget = timeoutMs > 0 ? timeoutMs : PROVIDER_TIMEOUT_MS;
         HttpRequest request = request(provider, prompt, false)
                 .timeout(Duration.ofMillis(budget))
@@ -152,11 +168,18 @@ public class ProviderClient {
             throw new ProviderError(ErrorCode.UPSTREAM_HTTP_ERROR,
                     upstreamErrorMessage(response.statusCode(), response.body()), response.statusCode());
         }
-        return completionFromJson(response.body());
+        JsonNode data;
+        try {
+            data = Json.parse(response.body());
+        } catch (Exception e) {
+            throw new ProviderError(ErrorCode.UPSTREAM_BAD_RESPONSE,
+                    "上游返回的不是 JSON（检查接口地址是否指向 OpenAI 兼容服务）");
+        }
+        return new ProviderResult(completionFromParsed(data), usageFromJson(data));
     }
 
-    public String callProviderStream(Provider provider, Prompt prompt, long timeoutMs,
-                                     AbortHandle abort, Consumer<String> onDelta) {
+    public ProviderResult callProviderStream(Provider provider, Prompt prompt, long timeoutMs,
+                                             AbortHandle abort, Consumer<String> onDelta) {
         long budget = timeoutMs > 0 ? timeoutMs : PROVIDER_TIMEOUT_MS;
         AtomicBoolean idleTimedOut = new AtomicBoolean(false);
         ScheduledFuture<?>[] idleTask = new ScheduledFuture<?>[1];
@@ -211,10 +234,11 @@ public class ProviderClient {
                 String text = readAll(body);
                 String content = completionFromJson(text);
                 onDelta.accept(content);
-                return content;
+                return new ProviderResult(content, usageFromJson(Json.tryParse(text)));
             }
 
             StringBuilder content = new StringBuilder();
+            TokenUsage usage = TokenUsage.UNKNOWN;
             boolean streamDone = false;
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8))) {
                 String line;
@@ -238,6 +262,9 @@ public class ProviderClient {
                     if (errorMessage != null) {
                         throw new ProviderError(ErrorCode.UPSTREAM_HTTP_ERROR, errorMessage);
                     }
+                    // usage 帧通常出现在流末尾（含 include_usage 时）；持续取最后一个
+                    TokenUsage chunkUsage = usageFromJson(data);
+                    if (chunkUsage.known()) usage = chunkUsage;
                     JsonNode choices = data.get("choices");
                     if (choices != null && choices.isArray() && !choices.isEmpty()) {
                         JsonNode delta = choices.get(0).get("delta");
@@ -261,7 +288,7 @@ public class ProviderClient {
             if (content.toString().trim().isEmpty()) {
                 throw new ProviderError(ErrorCode.UPSTREAM_EMPTY, "上游返回了空内容");
             }
-            return content.toString();
+            return new ProviderResult(content.toString(), usage);
         } finally {
             if (idleTask[0] != null) idleTask[0].cancel(false);
             abort.closeBody();
@@ -281,6 +308,10 @@ public class ProviderClient {
         body.put("model", provider.model());
         body.put("messages", providerMessages(prompt));
         body.put("stream", stream);
+        if (stream) {
+            // OpenAI 标准字段：让流末尾多一帧 usage。不认识的端点会忽略，不影响内容。
+            body.put("stream_options", Map.of("include_usage", true));
+        }
 
         return HttpRequest.newBuilder(URI.create(provider.baseUrl() + "/chat/completions"))
                 .header("content-type", "application/json")
@@ -314,6 +345,10 @@ public class ProviderClient {
             throw new ProviderError(ErrorCode.UPSTREAM_BAD_RESPONSE,
                     "上游返回的不是 JSON（检查接口地址是否指向 OpenAI 兼容服务）");
         }
+        return completionFromParsed(data);
+    }
+
+    private static String completionFromParsed(JsonNode data) {
         JsonNode choices = data.get("choices");
         if (choices != null && choices.isArray() && !choices.isEmpty()) {
             JsonNode message = choices.get(0).get("message");
@@ -323,6 +358,28 @@ public class ProviderClient {
             }
         }
         throw new ProviderError(ErrorCode.UPSTREAM_EMPTY, "上游返回了空内容");
+    }
+
+    /**
+     * 从 OpenAI 兼容响应里解析 usage；缺失字段记 -1。
+     * 缓存命中兼容两种风格：OpenAI 的 prompt_tokens_details.cached_tokens 与 DeepSeek 的
+     * prompt_cache_hit_tokens。
+     */
+    static TokenUsage usageFromJson(JsonNode data) {
+        if (data == null || !data.isObject()) return TokenUsage.UNKNOWN;
+        JsonNode usage = data.get("usage");
+        if (usage == null || !usage.isObject()) return TokenUsage.UNKNOWN;
+
+        long input = usage.path("prompt_tokens").asLong(-1);
+        if (input < 0) input = usage.path("input_tokens").asLong(-1);
+        long output = usage.path("completion_tokens").asLong(-1);
+        if (output < 0) output = usage.path("output_tokens").asLong(-1);
+
+        long cacheRead = usage.path("prompt_tokens_details").path("cached_tokens").asLong(-1);
+        if (cacheRead < 0) cacheRead = usage.path("prompt_cache_hit_tokens").asLong(-1);
+        if (cacheRead < 0) cacheRead = usage.path("cache_read_input_tokens").asLong(-1);
+
+        return new TokenUsage(input, output, cacheRead);
     }
 
     /** 上游响应里的 content 可能是字符串，也可能是 text parts 数组；非 text 部件忽略。 */

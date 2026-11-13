@@ -2,6 +2,7 @@ package io.github.cn3shy.chatshy.web;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -35,6 +36,7 @@ import io.github.cn3shy.chatshy.core.HubEvent;
 import io.github.cn3shy.chatshy.core.HttpUtil;
 import io.github.cn3shy.chatshy.core.JobQueue;
 import io.github.cn3shy.chatshy.core.Json;
+import io.github.cn3shy.chatshy.core.ModelPriceStore;
 import io.github.cn3shy.chatshy.core.OperatorHub;
 import io.github.cn3shy.chatshy.core.PendingJob;
 import io.github.cn3shy.chatshy.core.ProviderClient;
@@ -44,6 +46,9 @@ import io.github.cn3shy.chatshy.core.ProviderStore.ProviderPatch;
 import io.github.cn3shy.chatshy.core.ProviderStore.ProviderValidationException;
 import io.github.cn3shy.chatshy.core.SettingsService;
 import io.github.cn3shy.chatshy.core.ThreadStore;
+import io.github.cn3shy.chatshy.protocol.AnthropicProtocol;
+import io.github.cn3shy.chatshy.protocol.OpenAiProtocol;
+import io.github.cn3shy.chatshy.protocol.ProtocolTypes;
 import io.github.cn3shy.chatshy.protocol.ProtocolTypes.ChatMessage;
 import io.github.cn3shy.chatshy.protocol.ProtocolTypes.Prompt;
 import jakarta.servlet.http.HttpServletRequest;
@@ -80,10 +85,11 @@ public class AdminController {
     private final ProviderClient providerClient;
     private final Forwarder forwarder;
     private final SessionStore sessions;
+    private final ModelPriceStore modelPrices;
 
     public AdminController(JdbcTemplate jdbc, SettingsService settings, ThreadStore threads, JobQueue queue,
                            OperatorHub hub, ProviderStore providers, ProviderClient providerClient,
-                           Forwarder forwarder, SessionStore sessions) {
+                           Forwarder forwarder, SessionStore sessions, ModelPriceStore modelPrices) {
         this.jdbc = jdbc;
         this.settings = settings;
         this.threads = threads;
@@ -93,6 +99,7 @@ public class AdminController {
         this.providerClient = providerClient;
         this.forwarder = forwarder;
         this.sessions = sessions;
+        this.modelPrices = modelPrices;
     }
 
     // ---- 登录 ----
@@ -354,6 +361,8 @@ public class AdminController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String protocol,
             @RequestParam(required = false) String q,
+            @RequestParam(required = false) Long from,
+            @RequestParam(required = false) Long to,
             @RequestParam(defaultValue = "50") int limit,
             @RequestParam(defaultValue = "0") int offset) {
         int safeLimit = Math.max(1, Math.min(limit, 200));
@@ -375,10 +384,18 @@ public class AdminController {
             args.add(like);
             args.add(like);
         }
+        if (from != null && from > 0) {
+            where.append(" AND j.created_at >= ?");
+            args.add(from);
+        }
+        if (to != null && to > 0) {
+            where.append(" AND j.created_at <= ?");
+            args.add(to);
+        }
 
-        String from = " FROM jobs j LEFT JOIN threads t ON t.id = j.thread_id"
+        String fromClause = " FROM jobs j LEFT JOIN threads t ON t.id = j.thread_id"
                 + " LEFT JOIN providers p ON p.id = j.provider_id";
-        Long total = jdbc.queryForObject("SELECT COUNT(*)" + from + where, Long.class, args.toArray());
+        Long total = jdbc.queryForObject("SELECT COUNT(*)" + fromClause + where, Long.class, args.toArray());
 
         List<Object> pageArgs = new ArrayList<>(args);
         pageArgs.add(safeLimit);
@@ -388,7 +405,7 @@ public class AdminController {
                        j.via, j.provider_id, j.request_json, j.reply_content, j.forward_error,
                        t.title, t.model, t.source_ip, t.source_ua, t.source_client,
                        p.name AS provider_name
-                """ + from + where + " ORDER BY j.created_at DESC LIMIT ? OFFSET ?",
+                """ + fromClause + where + " ORDER BY j.created_at DESC LIMIT ? OFFSET ?",
                 (rs, i) -> new RequestRow(
                         rs.getString("id"), rs.getString("thread_id"), rs.getString("title"),
                         rs.getString("protocol"), rs.getString("mode"), rs.getString("status"),
@@ -436,6 +453,8 @@ public class AdminController {
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT j.id, j.thread_id, j.protocol, j.mode, j.status, j.created_at, j.replied_at,
                        j.via, j.request_json, j.reply_content, j.forward_error, j.forward_error_at,
+                       j.model AS billing_model, j.input_tokens, j.output_tokens,
+                       j.cache_read_tokens, j.token_source,
                        t.title, t.model, t.source_ip, t.source_ua, t.source_client,
                        p.name AS provider_name
                 FROM jobs j
@@ -453,6 +472,7 @@ public class AdminController {
         body.put("mode", row.get("mode"));
         body.put("status", row.get("status"));
         body.put("model", row.get("model") == null ? "" : row.get("model"));
+        body.put("billingModel", row.get("billing_model") == null ? "" : row.get("billing_model"));
         body.put("createdAt", row.get("created_at"));
         body.put("repliedAt", row.get("replied_at"));
         body.put("via", row.get("via") == null ? "" : row.get("via"));
@@ -464,6 +484,10 @@ public class AdminController {
         body.put("replyContent", row.get("reply_content"));
         body.put("forwardError", row.get("forward_error"));
         body.put("forwardErrorAt", row.get("forward_error_at"));
+        body.put("inputTokens", row.get("input_tokens"));
+        body.put("outputTokens", row.get("output_tokens"));
+        body.put("cacheReadTokens", row.get("cache_read_tokens"));
+        body.put("tokenSource", row.get("token_source"));
         return ResponseEntity.ok(body);
     }
 
@@ -497,7 +521,7 @@ public class AdminController {
                     "message", "AI 正在流式回复，请等它结束或先忽略这个请求"));
         }
 
-        if (queue.reply(id, content, null)) {
+        if (queue.reply(id, content, null, estimatedTokenRecord(id))) {
             return ResponseEntity.ok(Map.of("ok", true, "delivered", true));
         }
         if ("replied".equals(status)) {
@@ -553,6 +577,41 @@ public class AdminController {
         body.put("content", result.content());
         body.put("providerName", result.providerName());
         return body;
+    }
+
+    /**
+     * 人工回复的 token 估算：从 request_json 还原 prompt 算输入，回复内容算输出，
+     * 标记 token_source = 'estimated'；解析失败时返回 null（不写 token 列）。
+     */
+    private PendingJob.TokenRecord estimatedTokenRecord(String jobId) {
+        try {
+            List<Map<String, Object>> rows = jdbc.queryForList(
+                    "SELECT j.protocol, j.request_json, t.model FROM jobs j"
+                            + " LEFT JOIN threads t ON t.id = j.thread_id WHERE j.id = ?", jobId);
+            if (rows.isEmpty()) return null;
+            Map<String, Object> row = rows.get(0);
+            String protocol = String.valueOf(row.get("protocol"));
+            JsonNode body = Json.tryParse(String.valueOf(row.get("request_json")));
+            if (body == null) return null;
+
+            ProtocolTypes.ParseResult<?> parsed = ProtocolTypes.ANTHROPIC.equals(protocol)
+                    ? AnthropicProtocol.parse(body)
+                    : OpenAiProtocol.parse(body);
+            if (!parsed.ok()) return null;
+            ProtocolTypes.Prompt prompt = parsed.value() instanceof AnthropicProtocol.ParsedRequest ar
+                    ? ar.prompt()
+                    : ((OpenAiProtocol.ParsedRequest) parsed.value()).prompt();
+
+            int input = ProtocolTypes.estimateTokens(prompt.system() == null ? "" : prompt.system());
+            for (ProtocolTypes.ChatMessage message : prompt.messages()) {
+                input += ProtocolTypes.estimateTokens(message.content());
+            }
+            return new PendingJob.TokenRecord(
+                    row.get("model") == null ? "" : String.valueOf(row.get("model")),
+                    input, 0, 0, "estimated");
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     // ---- AI 厂商配置 ----
@@ -628,7 +687,7 @@ public class AdminController {
         try {
             String content = providerClient.callProvider(provider,
                     new Prompt(provider.model(), null, List.of(new ChatMessage("user", "只回复 OK"))),
-                    20_000, new ProviderClient.AbortHandle());
+                    20_000, new ProviderClient.AbortHandle()).content();
             int previewLen = Math.min(200, content.length());
             return ResponseEntity.ok(Map.of(
                     "ok", true,
@@ -777,6 +836,201 @@ public class AdminController {
                 ? "" : settings.getSensitiveWordsText());
         payload.put("sensitiveFilterEnabled", settings.isSensitiveFilterEnabled());
         return payload;
+    }
+
+    // ---- 模型单价 ----
+
+    @GetMapping("/admin/api/model-prices")
+    public ResponseEntity<?> listPrices() {
+        return ResponseEntity.ok(Map.of("prices", modelPrices.listPrices()));
+    }
+
+    @PostMapping("/admin/api/model-prices")
+    public ResponseEntity<?> createPrice(@RequestBody(required = false) byte[] rawBody) {
+        JsonNode body = Json.tryParse(Json.utf8(rawBody));
+        try {
+            ModelPriceStore.ModelPrice price = modelPrices.createPrice(new ModelPriceStore.PriceInput(
+                    text(body, "model"),
+                    decimal(body, "inputPerM"),
+                    decimal(body, "outputPerM"),
+                    decimal(body, "cacheReadPerM"),
+                    text(body, "currency")));
+            return ResponseEntity.ok(Map.of("price", price));
+        } catch (ModelPriceStore.PriceValidationException e) {
+            return priceErrorReply(e);
+        }
+    }
+
+    @PatchMapping("/admin/api/model-prices/{id}")
+    public ResponseEntity<?> updatePrice(@PathVariable String id,
+                                         @RequestBody(required = false) byte[] rawBody) {
+        JsonNode body = Json.tryParse(Json.utf8(rawBody));
+        if (body == null) body = Json.MAPPER.createObjectNode();
+        ModelPriceStore.PricePatch patch = new ModelPriceStore.PricePatch(
+                body.has("model") ? body.path("model").asText(null) : null,
+                body.has("inputPerM") ? decimal(body, "inputPerM") : null,
+                body.has("outputPerM") ? decimal(body, "outputPerM") : null,
+                body.has("cacheReadPerM") ? decimal(body, "cacheReadPerM") : null,
+                body.has("currency") ? body.path("currency").asText(null) : null);
+        try {
+            ModelPriceStore.ModelPrice price = modelPrices.updatePrice(id, patch);
+            if (price == null) return ResponseEntity.status(404).body(Map.of("error", "not_found"));
+            return ResponseEntity.ok(Map.of("price", price));
+        } catch (ModelPriceStore.PriceValidationException e) {
+            return priceErrorReply(e);
+        }
+    }
+
+    @DeleteMapping("/admin/api/model-prices/{id}")
+    public ResponseEntity<?> deletePrice(@PathVariable String id) {
+        if (!modelPrices.deletePrice(id)) return ResponseEntity.status(404).body(Map.of("error", "not_found"));
+        return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    private static ResponseEntity<?> priceErrorReply(ModelPriceStore.PriceValidationException e) {
+        int status = "price_exists".equals(e.code()) ? 409 : 400;
+        return ResponseEntity.status(status).body(Map.of("error", e.code(), "message", e.getMessage()));
+    }
+
+    private static BigDecimal decimal(JsonNode body, String field) {
+        JsonNode node = body == null ? null : body.get(field);
+        if (node == null) return null;
+        if (node.isNumber()) return node.decimalValue();
+        if (node.isTextual()) {
+            try {
+                return new BigDecimal(node.asText().trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    // ---- 用量统计 ----
+
+    /**
+     * 用量聚合：汇总卡 + 按天时序 + 按模型/厂商/来源分组。
+     * 只统计 token_source 非空的行（v3 迁移前的旧行不参与）；花费按单价表匹配，
+     * 没配价的模型该部分不计费（unpriced 单列返回）。
+     */
+    @GetMapping("/admin/api/usage")
+    public ResponseEntity<?> usage(@RequestParam(required = false) Long from,
+                                   @RequestParam(required = false) Long to) {
+        long now = System.currentTimeMillis();
+        long start = from != null && from > 0 ? from : 0;
+        long end = to != null && to > 0 ? to : now + 86_400_000L;
+
+        List<Object> args = new ArrayList<>(List.of(start, end));
+
+        // 汇总（含命中单价的行数）
+        List<Map<String, Object>> totalsRows = jdbc.queryForList("""
+                SELECT COUNT(*) AS requests,
+                       COALESCE(SUM(j.input_tokens), 0) AS input_tokens,
+                       COALESCE(SUM(j.output_tokens), 0) AS output_tokens,
+                       COALESCE(SUM(j.cache_read_tokens), 0) AS cache_read_tokens
+                FROM jobs j
+                WHERE j.token_source IS NOT NULL AND j.created_at >= ? AND j.created_at <= ?
+                """, args.toArray());
+        Map<String, Object> totalsRow = totalsRows.get(0);
+        long requests = ((Number) totalsRow.get("requests")).longValue();
+        long inputTokens = ((Number) totalsRow.get("input_tokens")).longValue();
+        long outputTokens = ((Number) totalsRow.get("output_tokens")).longValue();
+        long cacheReadTokens = ((Number) totalsRow.get("cache_read_tokens")).longValue();
+
+        // 分组行（模型/厂商/来源统一形状），花费在 Java 侧按单价表计算
+        List<Map<String, Object>> byModel = usageGroups("j.model", args);
+        List<Map<String, Object>> byProvider = usageGroups("COALESCE(j.via, '人工回复')", args);
+        List<Map<String, Object>> bySource = usageGroups(
+                "COALESCE(NULLIF(t.source_client, ''), '未知来源')", args);
+
+        // 按天时序
+        List<Map<String, Object>> daily = jdbc.queryForList("""
+                SELECT to_char(to_timestamp(j.created_at / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+                       COUNT(*) AS requests,
+                       COALESCE(SUM(j.input_tokens), 0) AS input_tokens,
+                       COALESCE(SUM(j.output_tokens), 0) AS output_tokens,
+                       COALESCE(SUM(j.cache_read_tokens), 0) AS cache_read_tokens
+                FROM jobs j
+                WHERE j.token_source IS NOT NULL AND j.created_at >= ? AND j.created_at <= ?
+                GROUP BY 1 ORDER BY 1
+                """, args.toArray());
+
+        Map<String, Object> body = Json.obj();
+        Map<String, Object> totals = Json.obj();
+        totals.put("requests", requests);
+        totals.put("inputTokens", inputTokens);
+        totals.put("outputTokens", outputTokens);
+        totals.put("cacheReadTokens", cacheReadTokens);
+        totals.put("cacheHitRate", inputTokens > 0
+                ? (double) cacheReadTokens / inputTokens : 0.0);
+        totals.put("costs", usageCosts(byModel));
+        body.put("totals", totals);
+        body.put("daily", daily);
+        body.put("byModel", byModel);
+        body.put("byProvider", byProvider);
+        body.put("bySource", bySource);
+        body.put("from", start);
+        body.put("to", end);
+        return ResponseEntity.ok(body);
+    }
+
+    /** 分组统计的公共形状：key / requests / 三类 token / 该组的估算花费（按币种分列）。 */
+    private List<Map<String, Object>> usageGroups(String keyExpr, List<Object> args) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT %s AS name,
+                       COUNT(*) AS requests,
+                       COALESCE(SUM(j.input_tokens), 0) AS input_tokens,
+                       COALESCE(SUM(j.output_tokens), 0) AS output_tokens,
+                       COALESCE(SUM(j.cache_read_tokens), 0) AS cache_read_tokens
+                FROM jobs j LEFT JOIN threads t ON t.id = j.thread_id
+                WHERE j.token_source IS NOT NULL AND j.created_at >= ? AND j.created_at <= ?
+                GROUP BY 1 ORDER BY requests DESC
+                """.formatted(keyExpr), args.toArray());
+
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            String name = String.valueOf(row.get("name"));
+            ModelPriceStore.ModelPrice price = modelPrices.findByModel(name);
+            Map<String, Object> item = Json.obj();
+            item.put("name", name);
+            item.put("requests", ((Number) row.get("requests")).longValue());
+            item.put("inputTokens", ((Number) row.get("input_tokens")).longValue());
+            item.put("outputTokens", ((Number) row.get("output_tokens")).longValue());
+            item.put("cacheReadTokens", ((Number) row.get("cache_read_tokens")).longValue());
+            if (price != null) {
+                item.put("inputCost", ModelPriceStore.cost(price.inputPerM(),
+                        ((Number) row.get("input_tokens")).longValue() - ((Number) row.get("cache_read_tokens")).longValue()));
+                item.put("cacheReadCost", ModelPriceStore.cost(price.cacheReadPerM(),
+                        ((Number) row.get("cache_read_tokens")).longValue()));
+                item.put("outputCost", ModelPriceStore.cost(price.outputPerM(),
+                        ((Number) row.get("output_tokens")).longValue()));
+                item.put("currency", price.currency());
+            }
+            out.add(item);
+        }
+        return out;
+    }
+
+    /** 把 byModel 各组的花费按币种合计；未配价的请求单列计数。 */
+    private Map<String, Object> usageCosts(List<Map<String, Object>> byModel) {
+        Map<String, Object> costs = Json.obj();
+        long unpricedRequests = 0;
+        for (Map<String, Object> group : byModel) {
+            if (group.get("inputCost") == null) {
+                unpricedRequests += (Long) group.get("requests");
+                continue;
+            }
+            String currency = String.valueOf(group.get("currency"));
+            BigDecimal total = (BigDecimal) costs.get(currency);
+            if (total == null) total = BigDecimal.ZERO;
+            for (String key : new String[]{"inputCost", "cacheReadCost", "outputCost"}) {
+                BigDecimal part = (BigDecimal) group.get(key);
+                if (part != null) total = total.add(part);
+            }
+            costs.put(currency, total);
+        }
+        costs.put("unpricedRequests", unpricedRequests);
+        return costs;
     }
 
     private static String text(JsonNode body, String field) {

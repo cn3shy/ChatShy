@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class Migrations {
-    public static final int SCHEMA_VERSION = 2;
+    public static final int SCHEMA_VERSION = 3;
 
     private final DataSource dataSource;
     private final JdbcTemplate jdbc;
@@ -150,6 +150,28 @@ public class Migrations {
             """
             CREATE INDEX IF NOT EXISTS idx_jobs_created         ON jobs(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_jobs_protocol_status ON jobs(protocol, status);
+            """,
+
+            // v3：用量采集 —— jobs 记录 token 消耗与计费模型；model_prices 为可配置模型单价表。
+            // 旧数据的 token 字段保持 NULL，用量统计自动不计入。
+            """
+            ALTER TABLE jobs ADD COLUMN model TEXT;
+            ALTER TABLE jobs ADD COLUMN input_tokens BIGINT;
+            ALTER TABLE jobs ADD COLUMN output_tokens BIGINT;
+            ALTER TABLE jobs ADD COLUMN cache_read_tokens BIGINT;
+            ALTER TABLE jobs ADD COLUMN token_source TEXT;
+
+            CREATE TABLE IF NOT EXISTS model_prices (
+              seq              BIGSERIAL UNIQUE,
+              id               TEXT PRIMARY KEY,
+              model            TEXT NOT NULL UNIQUE,
+              input_per_m      NUMERIC NOT NULL,
+              output_per_m     NUMERIC NOT NULL,
+              cache_read_per_m NUMERIC NOT NULL,
+              currency         TEXT NOT NULL DEFAULT 'CNY',
+              created_at       BIGINT NOT NULL,
+              updated_at       BIGINT NOT NULL
+            );
             """,
     };
 }

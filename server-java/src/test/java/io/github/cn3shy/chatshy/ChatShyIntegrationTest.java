@@ -682,4 +682,224 @@ class ChatShyIntegrationTest {
                     .isEqualTo("人工接管");
         }
     }
+
+    // ---------------------------------------------------------------- 用量采集
+
+    /** 上游带 usage 的非流式响应 → jobs 表 token 列落库 + 用量聚合接口。 */
+    @Test
+    void forwardRecordsUpstreamUsageAndAggregates() throws Exception {
+        try (MockUpstream upstream = new MockUpstream()) {
+            upstream.setHandler((request, out) -> MockUpstream.writeJson(out, 200, Json.stringify(Map.of(
+                    "choices", List.of(Map.of("index", 0,
+                            "message", Map.of("role", "assistant", "content", "AI 回复内容"))),
+                    "usage", Map.of(
+                            "prompt_tokens", 1000,
+                            "completion_tokens", 200,
+                            "prompt_tokens_details", Map.of("cached_tokens", 400))))));
+
+            String cookie = login();
+            String providerId = createProvider(cookie, upstream.base() + "/v1");
+            // 配单价：upstream-model 输入 1 元/M、输出 2 元/M、缓存读 0.1 元/M
+            HttpResponse<String> priceRes = call("POST", "/admin/api/model-prices", Json.stringify(Map.of(
+                    "model", "upstream-model",
+                    "inputPerM", "1",
+                    "outputPerM", "2",
+                    "cacheReadPerM", "0.1")), cookie);
+            assertThat(priceRes.statusCode()).isEqualTo(200);
+
+            long windowStart = System.currentTimeMillis();
+            CompletableFuture<HttpResponse<String>> caller = http.sendAsync(
+                    callerRequest(openAiBody("算用量", false), "CherryStudio/1.0.0", null).build(),
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            PendingJob job = waitPending(1).get(0);
+
+            assertThat(call("POST", "/admin/api/jobs/" + job.id() + "/forward",
+                    Json.stringify(Map.of("providerId", providerId)), cookie).statusCode()).isEqualTo(200);
+            caller.get(10, TimeUnit.SECONDS);
+
+            // 请求详情里能看到 token 数据
+            JsonNode detail = Json.parse(call("GET", "/admin/api/requests/" + job.id(), null, cookie).body());
+            assertThat(detail.path("tokenSource").asText()).isEqualTo("upstream");
+            assertThat(detail.path("billingModel").asText()).isEqualTo("upstream-model");
+            assertThat(detail.path("inputTokens").asLong()).isEqualTo(1000);
+            assertThat(detail.path("outputTokens").asLong()).isEqualTo(200);
+            assertThat(detail.path("cacheReadTokens").asLong()).isEqualTo(400);
+
+            // 用量聚合（限定时间窗口，数据库是测试类共享的，别的用例也会留下数据）
+            JsonNode usage = Json.parse(call("GET",
+                    "/admin/api/usage?from=" + windowStart, null, cookie).body());
+            assertThat(usage.path("totals").path("inputTokens").asLong()).isEqualTo(1000);
+            assertThat(usage.path("totals").path("outputTokens").asLong()).isEqualTo(200);
+            assertThat(usage.path("totals").path("cacheReadTokens").asLong()).isEqualTo(400);
+            // 命中率 = 400 / 1000 = 0.4
+            assertThat(usage.path("totals").path("cacheHitRate").asDouble()).isCloseTo(0.4, org.assertj.core.data.Offset.offset(1e-9));
+            // 花费 = (1000-400)*1/1e6 + 400*0.1/1e6 + 200*2/1e6 = 0.0006 + 0.00004 + 0.0004 = 0.00104
+            JsonNode costs = usage.path("totals").path("costs");
+            assertThat(costs.path("CNY").decimalValue()).isEqualByComparingTo("0.001040");
+            assertThat(costs.path("unpricedRequests").asLong()).isEqualTo(0);
+
+            // byModel 里找到本用例的模型
+            JsonNode modelGroup = null;
+            for (JsonNode group : usage.path("byModel")) {
+                if ("upstream-model".equals(group.path("name").asText())) modelGroup = group;
+            }
+            assertThat(modelGroup).isNotNull();
+            assertThat(modelGroup.path("requests").asLong()).isEqualTo(1);
+            assertThat(modelGroup.path("inputCost").decimalValue()).isEqualByComparingTo("0.000600");
+            assertThat(modelGroup.path("currency").asText()).isEqualTo("CNY");
+
+            // 清理单价，避免影响其他用例
+            String priceId = Json.parse(priceRes.body()).path("price").path("id").asText();
+            assertThat(call("DELETE", "/admin/api/model-prices/" + priceId, null, cookie).statusCode())
+                    .isEqualTo(200);
+        }
+    }
+
+    /** 上游不回 usage → jobs 表 token 列保持 NULL，聚合不计入。 */
+    @Test
+    void forwardWithoutUsageLeavesTokenColumnsNull() throws Exception {
+        try (MockUpstream upstream = new MockUpstream()) {
+            upstream.setHandler((request, out) -> MockUpstream.writeJson(out, 200, Json.stringify(Map.of(
+                    "choices", List.of(Map.of("index", 0,
+                            "message", Map.of("role", "assistant", "content", "没有用量")))))));
+
+            String cookie = login();
+            String providerId = createProvider(cookie, upstream.base() + "/v1");
+            CompletableFuture<HttpResponse<String>> caller = http.sendAsync(
+                    callerRequest(openAiBody("无用量", false), "CherryStudio/1.0.0", null).build(),
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            PendingJob job = waitPending(1).get(0);
+
+            assertThat(call("POST", "/admin/api/jobs/" + job.id() + "/forward",
+                    Json.stringify(Map.of("providerId", providerId)), cookie).statusCode()).isEqualTo(200);
+            caller.get(10, TimeUnit.SECONDS);
+
+            JsonNode detail = Json.parse(call("GET", "/admin/api/requests/" + job.id(), null, cookie).body());
+            assertThat(detail.path("tokenSource").isNull()).isTrue();
+            assertThat(detail.path("inputTokens").isNull()).isTrue();
+        }
+    }
+
+    /** 流式上游在末尾回 usage 帧 → 照常落库；请求体应带 stream_options.include_usage。 */
+    @Test
+    void streamForwardRecordsUsageFromFinalChunk() throws Exception {
+        try (MockUpstream upstream = new MockUpstream()) {
+            upstream.setHandler((request, out) -> {
+                MockUpstream.writeSseHead(out);
+                MockUpstream.writeSseData(out, MockUpstream.contentChunk("流式内容"));
+                MockUpstream.writeSseData(out, Json.stringify(Map.of(
+                        "choices", List.of(),
+                        "usage", Map.of("prompt_tokens", 50, "completion_tokens", 5))));
+                out.write("data: [DONE]\n\n".getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            });
+
+            String cookie = login();
+            String providerId = createProvider(cookie, upstream.base() + "/v1");
+            HttpRequest request = callerRequest(openAiBody("流式用量", true), "CherryStudio/1.0.0", null).build();
+            HttpResponse<InputStream> response =
+                    http.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream()).get(10, TimeUnit.SECONDS);
+            assertThat(response.statusCode()).isEqualTo(200);
+            PendingJob job = waitPending(1).get(0);
+
+            assertThat(call("POST", "/admin/api/jobs/" + job.id() + "/forward",
+                    Json.stringify(Map.of("providerId", providerId)), cookie).statusCode()).isEqualTo(200);
+            SseCollector collector = new SseCollector(response.body());
+            collector.join();
+
+            // 转发请求带了 include_usage
+            JsonNode sent = Json.parse(upstream.requests().get(0).body());
+            assertThat(sent.path("stream_options").path("include_usage").asBoolean()).isTrue();
+
+            JsonNode detail = Json.parse(call("GET", "/admin/api/requests/" + job.id(), null, cookie).body());
+            assertThat(detail.path("tokenSource").asText()).isEqualTo("upstream");
+            assertThat(detail.path("inputTokens").asLong()).isEqualTo(50);
+            assertThat(detail.path("outputTokens").asLong()).isEqualTo(5);
+        }
+    }
+
+    /** 人工回复 → 估算 token 落库（token_source = estimated）。 */
+    @Test
+    void manualReplyRecordsEstimatedUsage() throws Exception {
+        String cookie = login();
+        CompletableFuture<HttpResponse<String>> caller = http.sendAsync(
+                callerRequest(openAiBody("人工回复估算", false), "CherryStudio/1.0.0", null).build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        PendingJob job = waitPending(1).get(0);
+
+        assertThat(adminReply(cookie, job.id(), "这是人工回复").statusCode()).isEqualTo(200);
+        caller.get(10, TimeUnit.SECONDS);
+
+        JsonNode detail = Json.parse(call("GET", "/admin/api/requests/" + job.id(), null, cookie).body());
+        assertThat(detail.path("tokenSource").asText()).isEqualTo("estimated");
+        assertThat(detail.path("inputTokens").asLong()).isGreaterThan(0);
+        // 人工回复不花钱，也不该出现在花费里；本用例模型（gpt-test）无单价配置
+        JsonNode usage = Json.parse(call("GET", "/admin/api/usage", null, cookie).body());
+        JsonNode modelGroup = null;
+        for (JsonNode group : usage.path("byModel")) {
+            if ("gpt-test".equals(group.path("name").asText())) modelGroup = group;
+        }
+        assertThat(modelGroup).as("byModel=%s", usage.path("byModel")).isNotNull();
+        assertThat(modelGroup.path("inputCost").isMissingNode() || modelGroup.path("inputCost").isNull())
+                .as("group=%s", modelGroup).isTrue();
+    }
+
+    /** 请求监控时间过滤：from/to 只命中区间内的请求。 */
+    @Test
+    void requestMonitorFiltersByTimeRange() throws Exception {
+        String cookie = login();
+        long past = System.currentTimeMillis() - 3_600_000;
+        long future = System.currentTimeMillis() + 3_600_000;
+
+        // from = 未来 → 查不到
+        JsonNode empty = Json.parse(call("GET",
+                "/admin/api/requests?from=" + future, null, cookie).body());
+        assertThat(empty.path("total").asLong()).isEqualTo(0);
+        // from = 过去 → 全部命中
+        JsonNode all = Json.parse(call("GET",
+                "/admin/api/requests?from=" + past + "&to=" + future, null, cookie).body());
+        assertThat(all.path("total").asLong()).isGreaterThan(0);
+        // to = 过去 → 查不到
+        JsonNode none = Json.parse(call("GET",
+                "/admin/api/requests?to=" + past, null, cookie).body());
+        assertThat(none.path("total").asLong()).isEqualTo(0);
+    }
+
+    /** 单价 CRUD：重复模型报 409，非法输入报 400。 */
+    @Test
+    void modelPriceCrudValidation() throws Exception {
+        String cookie = login();
+        HttpResponse<String> create = call("POST", "/admin/api/model-prices", Json.stringify(Map.of(
+                "model", "price-test-model",
+                "inputPerM", "1.5",
+                "outputPerM", "3",
+                "cacheReadPerM", "0.2")), cookie);
+        assertThat(create.statusCode()).isEqualTo(200);
+        String id = Json.parse(create.body()).path("price").path("id").asText();
+
+        // 同名模型重复创建 → 409
+        assertThat(call("POST", "/admin/api/model-prices", Json.stringify(Map.of(
+                "model", "price-test-model")), cookie).statusCode()).isEqualTo(409);
+        // 负数单价 → 400
+        assertThat(call("POST", "/admin/api/model-prices", Json.stringify(Map.of(
+                "model", "neg-model", "inputPerM", "-1")), cookie).statusCode()).isEqualTo(400);
+        // 非法币种 → 400
+        assertThat(call("POST", "/admin/api/model-prices", Json.stringify(Map.of(
+                "model", "cur-model", "currency", "JPY")), cookie).statusCode()).isEqualTo(400);
+
+        // PATCH 改价
+        HttpResponse<String> patch = call("PATCH", "/admin/api/model-prices/" + id,
+                Json.stringify(Map.of("inputPerM", "2")), cookie);
+        assertThat(patch.statusCode()).isEqualTo(200);
+        assertThat(Json.parse(patch.body()).path("price").path("inputPerM").decimalValue())
+                .isEqualByComparingTo("2");
+
+        // 列表 & 删除
+        JsonNode list = Json.parse(call("GET", "/admin/api/model-prices", null, cookie).body());
+        assertThat(list.path("prices").size()).isEqualTo(1);
+        assertThat(call("DELETE", "/admin/api/model-prices/" + id, null, cookie).statusCode())
+                .isEqualTo(200);
+        assertThat(call("DELETE", "/admin/api/model-prices/" + id, null, cookie).statusCode())
+                .isEqualTo(404);
+    }
 }

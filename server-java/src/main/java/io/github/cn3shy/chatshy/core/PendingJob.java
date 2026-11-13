@@ -16,7 +16,15 @@ public final class PendingJob {
     public sealed interface Outcome permits Replied, Timeout, Cancelled, Superseded {
     }
 
-    public record Replied(String content) implements Outcome {
+    /** token 用量记录：jobs 表用量列的载体。null 字段写 NULL。 */
+    public record TokenRecord(String model, long inputTokens, long outputTokens,
+                              long cacheReadTokens, String source) {
+    }
+
+    public record Replied(String content, TokenRecord token) implements Outcome {
+        public Replied(String content) {
+            this(content, null);
+        }
     }
 
     public record Timeout() implements Outcome {

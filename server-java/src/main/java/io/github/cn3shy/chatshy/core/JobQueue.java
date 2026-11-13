@@ -70,9 +70,14 @@ public class JobQueue {
     }
 
     public synchronized boolean reply(String jobId, String content, String via) {
+        return reply(jobId, content, via, null);
+    }
+
+    /** 带 token 用量的回复落库；usage 为 null 时不写 token 列（如上游没报、人工回复未估算）。 */
+    public synchronized boolean reply(String jobId, String content, String via, PendingJob.TokenRecord token) {
         PendingJob job = jobs.get(jobId);
         if (job == null || !"pending".equals(job.status())) return false;
-        finish(job, new Replied(content), via);
+        finish(job, new Replied(content, token), via);
         return true;
     }
 
@@ -132,8 +137,10 @@ public class JobQueue {
         try {
             // 先落库/广播，再兑现 future：调用方 await() 返回时状态与事件都已就绪
             if (outcome instanceof Replied replied) {
-                jdbc.update("UPDATE jobs SET status = 'replied', reply_content = ?, replied_at = ?, via = ? WHERE id = ?",
-                        replied.content(), System.currentTimeMillis(), via, job.id());
+                jdbc.update("UPDATE jobs SET status = 'replied', reply_content = ?, replied_at = ?, via = ?"
+                        + tokenColumns(replied.token()) + " WHERE id = ?",
+                        repliedTokenArgs(replied.token(), via, job.id(), replied.content(),
+                                System.currentTimeMillis()));
             } else {
                 jdbc.update("UPDATE jobs SET status = ? WHERE id = ?", job.status(), job.id());
             }
@@ -141,6 +148,21 @@ public class JobQueue {
         } finally {
             job.resolve(outcome);
         }
+    }
+
+    /** token 列的 SQL 片段；无 token 数据时只更新基本列。 */
+    private static String tokenColumns(io.github.cn3shy.chatshy.core.PendingJob.TokenRecord token) {
+        return token == null ? "" : ", model = ?, input_tokens = ?, output_tokens = ?,"
+                + " cache_read_tokens = ?, token_source = ?";
+    }
+
+    /** 生成带 token 列时的参数列表（按 SQL 占位符顺序）。 */
+    private static Object[] repliedTokenArgs(io.github.cn3shy.chatshy.core.PendingJob.TokenRecord token,
+                                             String via, String jobId, String content, long repliedAt) {
+        if (token == null) return new Object[]{content, repliedAt, via, jobId};
+        return new Object[]{content, repliedAt, via,
+                token.model(), token.inputTokens(), token.outputTokens(),
+                token.cacheReadTokens(), token.source(), jobId};
     }
 
     @PreDestroy
